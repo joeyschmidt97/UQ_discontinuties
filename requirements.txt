@@ -1,0 +1,17 @@
+numpy>=1.24
+matplotlib>=3.6
+scikit-learn>=1.3      # GPR arm
+scipy>=1.10            # Latin-hypercube designs (scipy.stats.qmc)
+
+# report.ipynb only
+# nbformat
+# nbclient
+# ipykernel
+
+# sg_lib arm: NOT on PyPI. Clone separately and point SG_LIB_PATH at it:
+#   https://github.com/ionutfarcas/sensitivity-driven-sparse-grid-approx
+
+# SG++ arm only. No PyPI distribution resolves on any platform tried
+# (pysgpp / sgpp / SGpp); build SG++ from source with the Python bindings.
+#   https://github.com/SGpp/SGpp
+# pysgpp
