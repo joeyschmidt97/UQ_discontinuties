@@ -26,8 +26,10 @@ arms/sglib_arm.py           sensitivity-driven dimension-adaptive sparse grid
 arms/gpr_arm.py             GP regression + batch active learning (3 acquisitions)
 run_pilot.py                sweep cases x budgets x arms -> results.json + figures
 plot_placement.py           WHERE the budget goes and HOW next points are picked
+tests/test_visual.py        VERIFICATION SHEET - every assertion, plotted
 tests/test_arms.py          tests for sg_lib + GPR (backends installed)
 tests/test_sgpp_arm_mock.py control-flow tests against a mock pysgpp
+figures/                    tracked figures - viewable without running anything
 sgpp_examples/              the two original exploratory scripts (superseded)
 outputs/                    figures and results.json
 ```
@@ -42,7 +44,8 @@ python run_pilot.py --quick             # short sweep
 python run_pilot.py                     # full pilot sweep
 python run_pilot.py --figures-only      # re-plot from outputs/results.json
 python plot_placement.py --case argmax+gap --budget 300   # placement figures
-python tests/test_arms.py               # sg_lib + GPR tests
+python tests/test_arms.py               # sg_lib + GPR tests (pass/fail)
+python tests/test_visual.py             # same checks, RENDERED to figures/
 ```
 
 Everything except `arms/sgpp_arm.py` runs on numpy + matplotlib alone.
