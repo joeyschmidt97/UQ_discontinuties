@@ -7,7 +7,7 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 
-ARMS = ("grid", "sobol", "sglib", "sgpp", "gpr-var", "gpr-grad", "triangles")
+ARMS = ("grid", "moe", "sglib", "sgpp", "gpr-var", "gpr-grad", "triangles")
 
 
 def initialize(obs, seed):
@@ -31,7 +31,7 @@ def gpr(obs, seed, gradient=False):
     while obs.remaining:
         gp, count = fit_gp(obs, seed)
         warning_count += count
-        candidates = rng.random((2048, 2))
+        candidates = rng.random((1024, 2))
         nearest = cKDTree(obs.x).query(candidates)[0]
         _, sd = gp.predict(candidates, return_std=True)
         merit = sd.copy()
@@ -46,7 +46,7 @@ def gpr(obs, seed, gradient=False):
             merit *= .1 + np.sqrt(grad)
         merit[nearest < 1e-6] = -np.inf
         batch = []
-        for _ in range(min(4, obs.remaining)):
+        for _ in range(min(1, obs.remaining)):
             index = int(np.argmax(merit))
             batch.append(candidates[index])
             merit[np.linalg.norm(candidates-candidates[index], axis=1) < .06] = -np.inf
@@ -84,28 +84,54 @@ def triangles(obs, seed):
 
 def run_arm(name, obs, seed):
     if name == "grid":
-        side = int(np.sqrt(obs.budget))
-        a, b = np.meshgrid(np.linspace(0, 1, side), np.linspace(0, 1, side))
-        obs(np.column_stack([a.ravel(), b.ravel()]))
-        return None, dict(grid_side=side, nested=False)
-    if name == "sobol":
-        # Keep power-of-two Sobol blocks intact; four charged corners are extra.
-        exponent = (obs.remaining).bit_length()-1
-        obs(qmc.Sobol(2, scramble=True, seed=seed).random_base2(exponent))
-        return None, dict(sobol_points=2**exponent)
+        level = 1
+        while obs.remaining:
+            axis = np.linspace(0, 1, 2**level+1)
+            a, b = np.meshgrid(axis, axis)
+            candidates = np.column_stack([a.ravel(), b.ravel()])
+            while obs.remaining:
+                distance = cKDTree(obs.x).query(candidates)[0]
+                if distance.max() < 1e-10:
+                    break
+                obs(candidates[distance.argmax()])
+            level += 1
+        return None, dict(nested=True, ordering="maximin within dyadic grid level")
+    if name == "moe":
+        from .mixture import mixture
+        return mixture(obs, seed)
     if name in ("gpr-var", "gpr-grad"):
         return gpr(obs, seed, gradient=name == "gpr-grad")
     if name == "triangles":
         return triangles(obs, seed)
     if name == "sglib":
         from arms.sglib_arm import SgLibArm
-        arm = SgLibArm(tol=1e-10, nan_policy="error")
+        arm = SgLibArm(tol=0., max_level=20, budget_driven=True, nan_policy="error")
     elif name == "sgpp":
         from arms.sgpp_arm import SGppArm
-        arm = SGppArm(basis="modlinear", refine="surplus", refine_batch=1, nan_policy="error")
+        arm = SGppArm(basis="modlinear", refine="surplus", refine_batch=1, target_surplus=-1., nan_policy="error")
     else:
         raise ValueError(name)
     # External methods prescribe their own nodes. The common corners count
     # toward reconstruction/cost but do not alter those methods' native grids.
-    arm.fit(obs, dim=2, budget=obs.remaining)
-    return arm.predict, arm.summary()
+    from .core import BudgetExceeded
+    batch_sizes = []
+    def prescribed(points):
+        points = np.atleast_2d(points)
+        batch_sizes.append(len(points))
+        values = []
+        for point in points:
+            values.append(obs(point)[0])
+            if not obs.remaining:
+                raise BudgetExceeded("exact paid-point prefix complete")
+        return np.array(values)
+    try:
+        # Native grids select batches; pay and expose only the prefix affordable
+        # under the common unique-evaluation budget. No future values are read.
+        arm.fit(prescribed, dim=2, budget=16*obs.budget)
+    except BudgetExceeded:
+        if obs.remaining:
+            raise
+    if obs.remaining:
+        raise RuntimeError(f"native refinement stalled with {obs.remaining} unpaid points")
+    return None, dict(batch_sizes=batch_sizes, prefix_of_native_batches=True,
+                      native_prediction_unavailable="budget may end inside refinement batch")

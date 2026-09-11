@@ -43,6 +43,7 @@ DEFAULT_SG_LIB_PATH = os.environ.get(
     "SG_LIB_PATH", r"C:\Users\joesc\git\sensitivity-driven-sparse-grid-approx")
 
 _IMPORTED = {}
+_UNIFORM_NODES = {}
 
 
 def _import_sg_lib(path=None):
@@ -79,6 +80,7 @@ class SgLibArm(Arm):
     """Sensitivity-driven dimension-adaptive sparse grid.
 
     tol         : per-direction termination tolerance
+    budget_driven: cap individual directions and continue until budget/exhaustion
     max_level   : maximum level any direction may reach
     grid_level  : starting level (sg_lib always starts at 1)
     nan_policy  : 'fill' substitutes the current interpolant's value for a failed
@@ -88,9 +90,10 @@ class SgLibArm(Arm):
     """
 
     def __init__(self, tol=1e-6, max_level=20, grid_level=1, max_steps=4000,
-                 nan_policy="fill", sg_lib_path=None, name="sglib"):
+                 nan_policy="fill", sg_lib_path=None, name="sglib", budget_driven=False):
         if not HAVE_SG_LIB:
             raise ImportError("sg_lib not importable; see DEFAULT_SG_LIB_PATH")
+        self.budget_driven = budget_driven
         self.tol = tol
         self.max_level = max_level
         self.grid_level = grid_level
@@ -157,12 +160,33 @@ class SgLibArm(Arm):
         weights = [lambda x: 1.0 for _ in range(dim)]
 
         self.G = m["Grid"](dim, self.grid_level, 1, lo, hi, weights)
+        # This adapter fixes unit-box bounds, linear growth 1 and uniform
+        # weights. Cache only deterministic node geometry, never function values
+        # or adaptive state. Copies protect the cache from external mutations.
+        original_nodes = self.G.get_1D_points
+        def uniform_nodes(level, left, right, weight=None, eps=1e-14):
+            key = (str(pathlib.Path(self.sg_lib_path or DEFAULT_SG_LIB_PATH).resolve()),
+                   int(level), float(left), float(right), float(eps))
+            if key not in _UNIFORM_NODES:
+                _UNIFORM_NODES[key] = original_nodes(level, left, right, lambda x: 1.0, eps)
+            return tuple(points.copy() for points in _UNIFORM_NODES[key])
+        self.G.get_1D_points = uniform_nodes
         self.M = m["Multiindex"](dim)
         self.I = m["InterpolationToSpectral"](dim, 1, lo, hi, weights,
                                               self.max_level, self.G)
         init_multiindex = np.ones(dim, dtype=int)
         self.A = m["SpectralScores"](dim, self.tol * np.ones(dim + 1),
                                      init_multiindex, self.max_level, 1, self.I)
+
+        if self.budget_driven:
+            # The upstream convergence rule stops the WHOLE run when one axis
+            # hits max_level. Under a fixed-cost experiment, cap that axis and
+            # continue the other admissible subspaces with unchanged priorities.
+            admissible = self.A._is_O_admissible
+            self.A._is_O_admissible = lambda mi: bool(np.max(mi) <= self.max_level and admissible(mi))
+            def check_fixed_budget_termination():
+                self.A._stop_adaption = not bool(len(self.A.A))
+            self.A.check_termination_criterion = check_fixed_budget_termination
 
         self.history = []
         self.n_failed = 0

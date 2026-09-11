@@ -1,140 +1,138 @@
-# UQ discontinuities: 2-D sampling benchmark
+# UQ discontinuities: equal-point 2-D benchmark
 
-Find which simulation-placement strategy reconstructs a kinked or discontinuous
-growth-rate surface with the fewest evaluations. This is a synthetic benchmark,
-not a GENE runner or a validated physics surrogate.
+Compare simulation-placement strategies by the RMS error of the same low-poly
+reconstruction at **every integer number of paid evaluations**. Start with the
+[plot guide](reports/pilot/README.md), [five-sheet report](reports/pilot/index.html)
+or [results and interpretation](RESULTS.md).
 
-**Completed pilot:** [results and interpretation](RESULTS.md) / [plotted report](reports/pilot/index.html).
-All 420 experiments ran with seven real strategies, including SG++. Triangle
-refinement is the strongest overall finalist; cheaper baselines win some easy cases.
+## Surfaces
+
+All inputs are in the unit square. Cases are continuous, with Gaussian peaks
+inside mode regions, away from mode switches:
+
+| CLI case | Geometry | Total peaks |
+|---|---|---:|
+| `smooth` | Smooth baseline with one peak | 1 |
+| `two-plane-four-peaks` | Two affine regions, two peaks in each | 4 |
+| `three-plane-three-peaks` | Three affine regions, one peak in each | 3 |
+| `two-plane-asymmetric` | Two affine regions, two peaks in one and one in the other | 3 |
+
+Folded baselines are maxima of affine planes. Smooth additive bumps preserve
+the baseline switches. Seed rotates the geometry; peak centers remain at least
+0.15 normalized units from folds. These are synthetic growth-rate proxies, not
+validated mode physics. The previous on-fold Gaussian and jump cases are removed.
 
 ## Run
 
-Python 3.11+:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python -m benchmark2d --quick
-```
-
-Open the generated index.html and README.md in the output directory. Five consolidated
-sheets show the 3-D reference manifolds, every method's point placement, error versus
-points, reconstruction error maps, and the qualification scorecard.
-
-For the saved pilot, start with [the plot-reading guide](reports/pilot/README.md).
-Placement snapshots use seed 0 at the largest cap; curves retain every budget and
-summarize all paired seeds. All observations and scores remain in results.json.
-
-The default run covers on-plane peaks, offset peaks and true jumps, three seeds,
-and caps of 32, 64 and 128 evaluations:
-
-```powershell
-.\.venv\Scripts\python -m benchmark2d --output outputs/pilot
-.\.venv\Scripts\python -m benchmark2d --resume --output outputs/pilot
-.\.venv\Scripts\python -m benchmark2d --plots-only --output outputs/pilot
-.\.venv\Scripts\python -m benchmark2d --cases smooth kink on-plane offset-peaks jump --seeds 0 1 2 3 4 --budgets 32 64 128 256 --output outputs/full
-.\.venv\Scripts\python -m pytest tests/test_benchmark2d.py -q
-```
-
-Existing results are never silently overwritten. Resume requires matching code
-and configuration. Every finished experiment is saved atomically. Failed arms
-are recorded and give a nonzero exit status; unavailable optional backends are
-listed explicitly and prevent a claim of an overall winner.
-
-## Contenders
-
-| Arm | Placement rule |
-|---|---|
-| `grid` | Largest complete regular square grid within the cap |
-| `sobol` | Complete scrambled Sobol power-of-two block plus four corners |
-| `sglib` | Ionut Farcas's sensitivity-driven subspace refinement |
-| `sgpp` | Real SG++ modified-linear surplus refinement |
-| `gpr-var` | Matern-3/2 GP posterior standard deviation |
-| `gpr-grad` | GP uncertainty times predicted gradient, with an exploration floor |
-| `triangles` | Proposed area/neighbor-gradient heuristic, largest-triangle exploration every fifth step |
-
-The new GP policies share a fixed five-point Latin-hypercube initialization plus
-the four common corners. They use four-point batches with a spatial exclusion
-radius. The triangle method uses the same initialization. It is a simple proposed
-heuristic, not the published high-order simplex-stochastic-collocation algorithm.
-GP fitting warnings and fitted kernels are recorded instead of being hidden.
-Use `--native-test-size 128` for an optional secondary comparison of each model's
-own predictor. It is disabled by default because sg_lib's per-point prediction
-can dominate runtime; both common reconstruction scores always run.
-
-`sglib` uses the external checkout specified by `SG_LIB_PATH`; its Windows default
-is `C:\Users\joesc\git\sensitivity-driven-sparse-grid-approx`. It is not vendored.
-SG++ requires a real `pysgpp` installation. The PyPI 3.3.1 release provides a Linux
-wheel, not a Windows wheel; use a compatible Linux environment or a source build.
-The published wheel requires NumPy 1.x; the requirements cap NumPy below 2.
-The real adapter was validated on Linux x86_64 with Python 3.11 and the versions
-in `requirements-sgpp.txt`. To run the complete field in Linux/WSL:
+Use Python 3.11 and the dependencies in `requirements-sgpp.txt` for the full field.
+Real SG++ 3.3.1 requires the compatible Linux/NumPy 1.x environment described there.
+Ionut's library is an external checkout selected by `SG_LIB_PATH`.
 
 ```bash
 python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements-sgpp.txt
 export SG_LIB_PATH=/path/to/sensitivity-driven-sparse-grid-approx
-.venv/bin/python -m pytest tests/test_sgpp_real.py -q
-.venv/bin/python -m benchmark2d --output outputs/pilot
+.venv/bin/python -m benchmark2d --quick --output outputs/quick
+.venv/bin/python -m benchmark2d --seeds 0 1 2 --budgets 32 64 128 256 --native-test-size 1024 --output outputs/full
+.venv/bin/python -m benchmark2d --plots-only --output reports/pilot
 ```
 
-Never use the mock backend for ranking. A missing backend is **unavailable**, not
-an approximation score. Use `--arms grid sobol sglib gpr-var gpr-grad triangles`
-to explicitly request only the available field.
+`--budgets` sets diagnostic checkpoints and the largest run length. It does **not**
+launch independent runs at each cap: all N from 4 to the maximum are scored on
+one nested trajectory. `--resume` requires identical code/configuration. Results
+are saved atomically after each complete trajectory. Use a new output directory
+to change the experiment; existing data are not silently overwritten.
 
-## Fairness and winner rule
+For built-in methods on Windows, install `requirements.txt` and explicitly select
+`--arms grid moe gpr-var gpr-grad triangles`. Unavailable backends are reported;
+mocks never enter rankings.
 
-- Inputs are normalized to the unit square. Observations are clean and deterministic
-  in this first pilot. All methods purchase four corner evaluations so the common
-  triangulation covers the entire box. External sparse-grid native models still use
-  their prescribed nodes; the extra corners support the common reconstruction.
-- One unique point costs one evaluation. Repeated requests use the cache. Whole
-  batches must fit the remaining budget before any observations are taken.
-- Truth, boundary locations, peak masks and scoring points are evaluator-only.
-  Search strategies receive observations they purchased, never true residuals.
-- A fixed independent scrambled Sobol test set scores common piecewise-linear
-  reconstruction. RMS is normalized by the same truth range for every arm and every
-  region in a case/seed. Nonfinite predictions fail scoring; no silent fallback.
-- Global, boundary-band and peak-region errors are stored. Boundary-band width is
-  0.06 in normalized signed distance. A common exact RBF reconstruction cross-checks
-  dependence on the triangle-based scorer. Native GP/sparse-grid error is secondary.
-- Default qualification: global normalized RMS <= 0.05 and boundary-band RMS <= 0.10.
-  Both must pass at that checkpoint and all later tested checkpoints. Report the
-  lowest **measured** qualifying cost; do not interpolate an unobserved crossing.
-- Per-case cost comparisons require qualification on every seed. Unreached targets
-  remain unreached. An incomplete field cannot produce an overall winner. Even a
-  complete synthetic pilot does not identify a universal or production GENE winner.
-- Plot actual evaluations, including corners, not the nominal cap. Complete grids,
-  Sobol blocks and atomic sparse-grid refinements can underspend. Each cap is an
-  independent run with matched seeds; designs need not be nested. Point colors for
-  the regular grid show enumeration, not acquisition history.
+## Contenders
 
-## Code and retained work
+| Arm | Placement rule |
+|---|---|
+| `grid` | Progressive dyadic regular grid, maximin ordering within each level |
+| `sglib` | Ionut Farcas's sensitivity-driven subspace refinement |
+| `sgpp` | Real SG++ modified-linear surplus refinement |
+| `gpr-var` | Matern-3/2 GP posterior standard deviation |
+| `gpr-grad` | GP uncertainty times predicted gradient, with an exploration floor |
+| `triangles` | Triangle area / neighboring-gradient disagreement; area exploration every fifth step |
+| `moe` | Locally gated triangle, bilinear-grid and GP experts, sharing one observation budget |
 
-`benchmark2d/` is the only current benchmark entry point:
+Sobol is removed as a contender. The independent scoring integration set still
+uses a fixed scrambled Sobol design; it never enters acquisition.
 
-- `core.py`: analytic surfaces, evaluation accounting and common scoring.
-- `strategies.py`: search policies and existing sparse-grid adapters.
-- `report.py`: synchronized scientific figures and HTML scorecard.
-- `__main__.py`: CLI, provenance, atomic saves and resume.
+GP, triangle and mixture policies share five Latin-hypercube initialization
+points plus four charged corners. GP policies now acquire one point per fit.
+The progressive grid replaces the previous full-square-at-each-cap design so
+it can spend every budget exactly. The triangle policy is a proposed heuristic,
+not a published high-order simplex stochastic collocation implementation.
 
-The older six-dimensional pilot, placement/plot scripts, notebook, visual-test
-script, their tracked figures and original SG++ example scripts were removed from this branch; Git
-history on `benchmark-harness` retains them. Existing `arms/` adapters and their
-tests remain. `manifold.py` remains for the future physics-inspired stage.
-Uncommitted spectrum/reconstruction work from other checkouts is not overwritten.
+### Mixture of experts
 
-## Next gates
+The prior pilot's shortlist, excluding Sobol, is frozen before the new experiment:
+triangles, grid and GP uncertainty (commit `b4899ad`, old `RESULTS.md`). This is
+selection from the prior pilot, not a claim of equal-N ranking in that old data.
 
-1. Real SG++ validation is complete: six compiled-backend tests cover grid/alpha
-   consistency at budget stops and failed-value repair. Keep the matrix backing
-   a SWIG evaluation alive until multiplication finishes.
-2. Inspect the saved case/seed/budget matrix and reconstruction-dependent rankings.
-3. Tune only on a separate development case set; confirm finalists on held-out geometries.
-4. Add noise/failure accounting and validate inner k_y stopping against dense spectra.
-5. Transfer finalists to the four campaign axes, then a small metered GENE pilot.
+All experts fit the **same paid samples**. The grid is a sampling policy, so its
+predictive expert is a regular bilinear basis fitted by ridge regression to those
+shared observations. Local weights learn squared prediction errors recorded
+before each new observation is revealed. Acquisition blends triangle discrepancy,
+space filling, GP uncertainty and expert disagreement, with periodic exploration.
+No reference test values, peak centers or fold locations reach the mixture.
 
-Credit: [SG++](https://github.com/SGpp/SGpp),
-[Farcas sensitivity-driven grids](https://github.com/ionutfarcas/sensitivity-driven-sparse-grid-approx),
-[SciPy interpolation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.LinearNDInterpolator.html).
+The primary score tests whether the mixture **places points better**. Optional
+`native_error` at final N separately tests its mixed predictor and GP predictors
+on the same held-out subset. It does not replace the common score.
+
+## Fair comparison and score
+
+- One unique point is one paid evaluation. Four common corners count for every
+  method and guarantee the common triangulation covers the square. Duplicate
+  requests are cached. An incomplete trajectory fails rather than padding points.
+- Native sparse grids still choose refinement batches. Their prescribed nodes
+  are paid in order; a trajectory can finish partway through a batch. Every prefix
+  is scored by the common reconstructor, even when a native grid update is not yet
+  complete. Zero-tolerance sg_lib and negative stopping-threshold SG++ continuation
+  disable convergence-based early exit. sg_lib caps each direction at level 20
+  and continues other admissible subspaces, retaining its refinement priorities;
+  reaching one axis limit no longer stops the whole fixed-budget experiment.
+  Native sparse-grid predictions are omitted for these truncated grid states.
+- Truth and geometry are evaluator-only. A fixed independent set of 16,384 points
+  scores piecewise-linear Delaunay reconstruction. RMS is normalized by one fixed
+  truth range per case/seed, shared by all methods and regions.
+- Global, fold-band (distance < 0.06) and peak-region errors are saved at every N.
+  Smooth has no fold: its band metric repeats global RMS. Exact common RBF scores
+  are secondary cross-checks at the requested diagnostic checkpoints only.
+- Curves use log-log axes and show medians/IQR over paired seeds. Every point on
+  every curve is an equal-N comparison. Placement and residual sheets show the
+  same final N and representative seed for all methods.
+- Qualification requires normalized global RMS <= 0.05 and fold-band RMS <= 0.10,
+  sustained at **every subsequent integer N through the tested maximum**. Report
+  per-case qualifying costs and fixed-N errors; unreached targets remain unreached.
+  Qualification is finite-horizon evidence, not guaranteed future monotonicity.
+- The final row stores coordinates and observed values once. Earlier designs are
+  prefixes of those arrays. Scoring replays cached values without new oracle calls.
+
+## Tests and code
+
+```bash
+python -m pytest tests/test_benchmark2d.py -q
+python -m pytest tests/test_exact_sparse.py tests/test_sgpp_real.py -q
+python -m pytest tests/test_sgpp_arm_mock.py -q
+```
+
+Run mocks separately because they replace the compiled backend at import time.
+`benchmark2d/core.py` defines geometry/scoring; `strategies.py` sampling;
+`mixture.py` shared-budget experts and gates; `report.py` the five comparison
+sheets; `__main__.py` trajectories, provenance and resume. Existing `arms/`
+adapters remain. Earlier experiments and removed scripts are retained in Git.
+
+Next, confirm the strongest designs on held-out geometries and peak widths,
+then add failed/retried evaluations and real GENE node-hour costs before selecting
+a production runner.
+
+The saved pilot records both execution source hashes for reused trajectories and
+rerun sg_lib trajectories. Exact source archives accompany the results; renderer
+provenance is recorded separately. No new observations were generated when
+merging the independently executed methods into the final comparison.

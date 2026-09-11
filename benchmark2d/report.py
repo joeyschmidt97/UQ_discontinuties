@@ -9,15 +9,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from .core import Surface, reconstruct
 
-COLORS = dict(grid="#758398", sobol="#343a40", sglib="#b07813", sgpp="#9b59b6",
+COLORS = dict(grid="#758398", moe="#343a40", sglib="#b07813", sgpp="#9b59b6",
               **{"gpr-var": "#007c91", "gpr-grad": "#dd5f42", "triangles": "#318448"})
 
 
-def curve(ax, rows, metric, color, label, **kw):
+def curve(ax, rows, metric, color, label, expected_seeds=None, **kw):
     # Group by requested cap; plot actual measured cost, not nominal budget.
     points = []
     for budget in sorted({r["budget"] for r in rows}):
         group = [r for r in rows if r["budget"] == budget]
+        if expected_seeds is not None and {r["seed"] for r in group} != set(expected_seeds):
+            continue
         points.append((np.median([r["n"] for r in group]),
                        np.median([r[metric] for r in group]),
                        np.quantile([r[metric] for r in group], [.25, .75])))
@@ -25,7 +27,7 @@ def curve(ax, rows, metric, color, label, **kw):
         return
     points.sort(key=lambda p: p[0])
     x, y, spread = zip(*points)
-    ax.plot(x, y, "o-", color=color, label=label, markersize=4, **kw)
+    ax.plot(x, y, "-", color=color, label=label, markersize=2, **kw)
     ax.fill_between(x, np.array(spread)[:, 0], np.array(spread)[:, 1], color=color, alpha=.10)
 
 
@@ -37,7 +39,7 @@ def format_axis(ax, epsilon):
 
 
 def qualifying_cost(rows, epsilon, band_epsilon):
-    # Measured checkpoint only; all subsequent tested checkpoints must pass.
+    # Measured checkpoint only; all subsequent tested point counts must pass.
     ordered = sorted(rows, key=lambda r: r["budget"])
     for i, row in enumerate(ordered):
         if all(r["status"] == "ok" and r["error"] <= epsilon and r["band_error"] <= band_epsilon for r in ordered[i:]):
@@ -58,7 +60,7 @@ def render(payload, out):
     seed, cap = min(cfg["seeds"]), max(cfg["budgets"])
     ok = [r for r in rows if r["status"] == "ok"]
     epsilon, band_epsilon = cfg["epsilon"], cfg["band_epsilon"]
-    names = {"grid": "Regular grid", "sobol": "Sobol", "sglib": "Ionut / sg_lib",
+    names = {"grid": "Progressive grid", "moe": "Mixture of experts", "sglib": "Ionut / sg_lib",
              "sgpp": "SG++", "gpr-var": "GP uncertainty", "gpr-grad": "GP gradient", "triangles": "Triangles"}
     a, b = np.meshgrid(np.linspace(0, 1, 101), np.linspace(0, 1, 101))
     query = np.column_stack([a.ravel(), b.ravel()])
@@ -84,13 +86,13 @@ def render(payload, out):
                         linewidth=0, rcount=101, ccount=101, antialiased=True)
         ax.set(title=case, xlabel="Parameter 1", ylabel="Parameter 2", zlabel="Growth-rate proxy",
                xlim=(0, 1), ylim=(0, 1), zlim=(low, high))
-        ax.view_init(28, -58)
+        ax.view_init(35, -20)
         ax.tick_params(labelsize=8)
     fig.suptitle(f"01  True 3-D manifolds | geometry seed {seed} | shared height and color scales", fontsize=17)
     fig.colorbar(ScalarMappable(Normalize(low, high), "viridis"), ax=axes,
                  location="bottom", shrink=.35, aspect=55, label="True growth-rate proxy")
     save_figure(fig, "01-manifold-reference.png", "1. Start with the true manifolds",
-                "Exact synthetic surfaces, before any method samples them. All views share the same camera, height range and color scale. The jump surface has a genuine discontinuity; rendered mesh cells visually bridge its edge.")
+                "Exact synthetic surfaces, before any method samples them. All views share the same camera, height range and color scale. All peaks lie inside mode regions, away from continuous folds. Peak counts are 1, 4, 3 and 3.")
 
     # 2: All strategies x all cases in one placement sheet.
     fig, axes = plt.subplots(len(cases), len(arms), figsize=(3.25*len(arms), 3.15*len(cases)),
@@ -100,7 +102,7 @@ def render(payload, out):
             ax = axes[i, j]
             ax.contourf(a, b, truth[case], levels=np.linspace(low, high, 18), cmap="Greys", alpha=.30)
             if case != "smooth":
-                ax.contour(a, b, surfaces[case].distance(query).reshape(a.shape), levels=[0], colors="#008a9a", linewidths=1)
+                ax.contour(a, b, surfaces[case].region(query).reshape(a.shape), levels=np.arange(len(surfaces[case].normals)-1)+.5, colors="#008a9a", linewidths=1)
             row = chosen.get((case, arm))
             if row:
                 x = np.array(row["x"])
@@ -118,11 +120,11 @@ def render(payload, out):
                 ax.set_ylabel(case+"\nParameter 2", fontsize=11)
             if i == len(cases)-1:
                 ax.set_xlabel("Parameter 1")
-    fig.suptitle(f"02  Where every method puts its points | seed {seed} | requested cap {cap} | N = actual charged points", fontsize=17)
+    fig.suptitle(f"02  Where every method puts its points | seed {seed} | exactly {cap} paid points per method", fontsize=17)
     fig.colorbar(ScalarMappable(Normalize(0, 1), "plasma"), ax=axes.ravel().tolist(),
-                 location="bottom", shrink=.40, aspect=70, label="Sample order: early (dark) to late (yellow); grid colors show enumeration")
+                 location="bottom", shrink=.40, aspect=70, label="Sample order: early (dark) to late (yellow)")
     save_figure(fig, "02-point-placement.png", "2. Compare point placement across all methods",
-                "Rows are test surfaces; columns are methods. Gray shading shows truth, teal marks the crossing/jump boundary, and dots show sampled locations. These are final-cap snapshots of one paired seed, not averages. N includes the four shared corner evaluations; some methods underspend.")
+                "Rows are test surfaces; columns are methods. Gray shading shows truth, teal marks the mode-switch boundary, and dots show sampled locations. These are final-cap snapshots of one paired seed, not averages. N includes the four shared corner evaluations; every method uses exactly the same number of points.")
 
     # 3: All-method convergence curves; split global and boundary scores.
     fig, axes = plt.subplots(2, len(cases), figsize=(4.6*len(cases), 8.5), squeeze=False)
@@ -131,10 +133,10 @@ def render(payload, out):
         for i, metric in enumerate(("error", "band_error")):
             ax = axes[i, col]
             for arm in arms:
-                curve(ax, [r for r in case_rows if r["arm"] == arm], metric, COLORS[arm], names[arm], lw=1.6)
+                curve(ax, [r for r in case_rows if r["arm"] == arm], metric, COLORS[arm], names[arm], expected_seeds=cfg["seeds"], lw=1.6)
             target = epsilon if i == 0 else band_epsilon
             ax.axhline(target, color="#333333", ls="--", lw=1)
-            ax.set(xscale="log", yscale="log", xlim=(8, max(cfg["budgets"])*1.15), ylim=(1e-3, 1),
+            ax.set(xscale="log", yscale="log", xlim=(4, max(cfg["budgets"])*1.15), ylim=(1e-3, 1),
                    title=case if i == 0 else "", xlabel="Actual evaluations" if i == 1 else "")
             if col == 0:
                 ax.set_ylabel(("Global RMS" if i == 0 else "Boundary-band RMS")+" / fixed truth range")
@@ -145,7 +147,7 @@ def render(payload, out):
     fig.suptitle(f"03  Error versus points | all {len(cfg['seeds'])} paired seeds | targets: global {epsilon:g}, boundary {band_epsilon:g}", fontsize=17)
     fig.tight_layout(rect=(0, .065, 1, .94))
     save_figure(fig, "03-error-versus-points.png", "3. Judge accuracy per evaluation",
-                "Each panel overlays all methods. Top: global RMS; bottom: boundary-band RMS. Lines are medians and shading is the interquartile spread across paired seeds/geometries, not confidence intervals. Both axes use identical limits in all panels. Dashed lines show the qualification targets. Lower and further left is better; placement alone is not a score.")
+                "Each panel overlays all methods. Top: global RMS; bottom: boundary-band RMS. Lines are medians and shading is the interquartile spread across paired seeds/geometries, not confidence intervals. Both axes use identical limits in all panels. Curves require the complete paired seed set at each N. Dashed lines show the qualification targets. Lower and further left is better; placement alone is not a score.")
 
     # 4: Matching residual sheet, one shared normalized error scale.
     fig, axes = plt.subplots(len(cases), len(arms), figsize=(3.25*len(arms), 3.15*len(cases)),
@@ -161,7 +163,7 @@ def render(payload, out):
             else:
                 ax.text(.5, .5, "Unavailable / failed", transform=ax.transAxes, ha="center")
             if case != "smooth":
-                ax.contour(a, b, surfaces[case].distance(query).reshape(a.shape), levels=[0], colors="cyan", linewidths=.7)
+                ax.contour(a, b, surfaces[case].region(query).reshape(a.shape), levels=np.arange(len(surfaces[case].normals)-1)+.5, colors="cyan", linewidths=.7)
             ax.set(xlim=(0, 1), ylim=(0, 1), aspect="equal", xticks=[0, .5, 1], yticks=[0, .5, 1])
             ax.tick_params(labelsize=8)
             if i == 0:
@@ -210,18 +212,18 @@ def render(payload, out):
             cell.set_facecolor("#e8edf3")
             cell.set_text_props(weight="bold")
     fig.suptitle("05  Which methods reach both error targets?", fontsize=17)
-    fig.text(.5, .075, "Green: every seed qualifies. N is median measured cost to both targets, sustained at later checkpoints.\n"
+    fig.text(.5, .075, "Green: every seed qualifies. N is median measured cost to both targets, sustained at later point counts.\n"
              "Red: at least one seed does not qualify within the tested budgets. No interpolation between checkpoints.",
              ha="center", fontsize=11)
     fig.subplots_adjust(left=.12, right=.98, top=.86, bottom=.18)
     save_figure(fig, "05-performance-scorecard.png", "5. Read the qualification scorecard",
-                "A method qualifies only when every seed reaches both targets and stays below them at subsequent tested checkpoints. N is the median measured qualifying cost. Green does not imply that a method wins every case or is ready for GENE.")
+                "A method qualifies only when every seed reaches both targets and stays below them at subsequent tested point counts. N is the median measured qualifying cost. Green does not imply that a method wins every case or is ready for GENE.")
 
     qualified_names = ", ".join(names[arm] for arm in arms if qualifies_everywhere[arm]) or "None within the tested budgets"
     guide = f"""# Plot guide — start here
 
 Five overview images consolidate the saved results. All {len(arms)} methods and
-all {len(cases)} test cases are shown together. **The {len(rows)} saved experiment records are unchanged.**
+all {len(cases)} test cases are shown together. **Every integer point count from 4 to {cap} is scored on one nested trajectory per method and seed.**
 
 Read these in order:
 
@@ -235,13 +237,35 @@ Or open [the single scrolling report](index.html), which includes all five sheet
 
 ## How to read the figures
 
-- **Placement/reference/maps:** one representative paired seed ({seed}), at the largest requested cap ({cap}). N printed on placement panels is the actual number of paid samples, including four shared corners. The regular grid, Sobol blocks and sparse grids can underspend.
-- **Dot colors:** dark = early, yellow = late within that design. Regular-grid colors show enumeration, not adaptive decisions. Pale gray contours show the true surface; teal/cyan marks the true crossing or jump boundary. The smooth control has no boundary.
-- **Error curves:** medians across all {len(cfg['seeds'])} seeds/geometries; bands are the middle 50%, not confidence intervals. Top row is global error; bottom is error near the boundary. In the smooth control, this band is only a reference strip.
+- **Placement/reference/maps:** one representative paired seed ({seed}), at the largest point count ({cap}). N printed on placement panels is the actual number of paid samples, including four shared corners. Every method spends exactly this many points.
+- **Dot colors:** dark = early, yellow = late within that design. Progressive-grid order is geometric, independent of observed values. Pale gray contours show the true surface; teal/cyan marks the true mode-switch boundary. The smooth control has no boundary.
+- **Error curves:** medians across all {len(cfg['seeds'])} seeds/geometries; bands are the middle 50%, not confidence intervals. Top row is global error; bottom is error near the boundary. The smooth control has no fold; its lower panel repeats global error.
 - **Axes and colors:** 3-D height scales, convergence axes and normalized residual colors are shared. Residuals above 0.5 use the brightest color. The reference height is a synthetic growth-rate proxy, not calibrated GENE output.
-- **Winning:** smaller error with fewer actual evaluations is better. Qualification requires global RMS/range <= {epsilon:g} and boundary RMS/range <= {band_epsilon:g}, sustained through subsequent tested checkpoints. A dense-looking cluster of dots is not itself evidence of accuracy.
+- **Winning:** smaller error with fewer actual evaluations is better. Qualification requires global RMS/range <= {epsilon:g} and boundary RMS/range <= {band_epsilon:g}, sustained through subsequent tested point counts. A dense-looking cluster of dots is not itself evidence of accuracy.
 - **Snapshot versus curve:** the dots show one seed; curves summarize all seeds. Different seeds rotate the geometry. Do not expect the snapshot's individual error to equal the median curve.
-- **Budgets:** each requested cap is an independent run with matched seeds, not necessarily a prefix of the next design.
+- **Budgets:** one trajectory per case/seed/method, scored at every integer N. Every curve compares identical N across methods. Sparse-grid batches are evaluated in prescribed order; a prefix may end inside a batch before its native surrogate can be updated. This compares point placement through the common low-poly reconstruction, not native-model update frequency.
+
+## Methods and geometry
+
+Sobol acquisition is removed. A fixed scrambled Sobol **integration set** remains
+independent of every sampler; it is only used to measure error fairly.
+
+The mixture's frozen shortlist is triangles, grid and GP uncertainty from the
+previous pilot (commit b4899ad). The grid predictive expert uses bilinear basis
+regression on the shared observations. Local gates use prequential errors, with
+uniform exploration and model disagreement guiding acquisition. It pays for one
+shared sample per step, not three separate simulation runs. Ionut / sg_lib uses fixed-budget continuation: each direction is capped at level
+20, while other admissible subspaces continue. Native surplus priorities remain
+in effect. Deterministic node geometry is cached; observations are never shared
+between trials. The common low-poly
+score measures whether this design places points better; optional native error
+measures the mixture predictor separately. This is a new hybrid, not an average
+of three independent full-budget runs.
+
+Cases: smooth + one peak; two planes + two peaks per region (four total);
+three planes + one peak per region; two planes + two peaks in one region and
+one in the other. Gaussian centers have a positive margin from every fold.
+No jump or on-fold Gaussian case is included.
 
 ## Pilot takeaway
 
@@ -261,7 +285,7 @@ python -m benchmark2d --plots-only --output reports/pilot
 All coordinates, sample values, costs, per-seed errors, peak-region metrics and
 the common-RBF cross-check remain in [results.json](results.json). The new overview
 does not repeat every intermediate 3-D view; the full learning curves retain all
-budget checkpoints. The previous figure layout remains available in Git history.
+integer point counts. RBF checks are saved only at configured checkpoints; coordinates are stored once at the final N and sliced for earlier prefixes. The previous experiments remain available in Git history.
 """
     (out/"README.md").write_text(guide, encoding="utf-8")
     pieces = ["<h1>2-D benchmark — five comparison sheets</h1>",

@@ -14,7 +14,7 @@ def test_linear_reconstruction_recovers_affine_surface_everywhere():
 
 
 def test_batch_budget_is_atomic_and_cache_does_not_charge_again():
-    obs = Observations(Surface("kink"), 9)
+    obs = Observations(Surface("two-plane-four-peaks"), 9)
     obs([[0., 0.], [.4, .5], [.4, .5]])
     assert len(obs.x) == 5
     before = obs.x.copy()
@@ -33,24 +33,29 @@ def test_no_silent_extrapolation_outside_hull():
         reconstruct([[0., 0.], [.5, 0.], [0., .5]], [0., 1., 1.], [[1., 1.]])
 
 
-def test_offset_peaks_have_known_distances_and_kink_is_continuous():
-    s = Surface("offset-peaks", 2)
-    assert np.allclose(s.distance(s.centers()), [.17, -.17])
-    k = Surface("kink", 2)
-    p = np.array([.5, .5])
-    assert abs(k([p+1e-9*k.normal])[0]-k([p-1e-9*k.normal])[0]) < 1e-8
-    jump = Surface("jump", 2)
-    assert abs(jump([p+1e-9*k.normal])[0]-jump([p-1e-9*k.normal])[0]) > .44
+@pytest.mark.parametrize("case,count", [("smooth",1), ("two-plane-four-peaks",4),
+                                      ("three-plane-three-peaks",3), ("two-plane-asymmetric",3)])
+def test_peaks_are_inside_regions_and_folds_are_continuous(case,count):
+    for seed in range(3):
+        s = Surface(case, seed)
+        assert len(s.centers()) == count
+        assert ((s.centers()>0) & (s.centers()<1)).all()
+        if case != "smooth":
+            assert (s.distance(s.centers()) > .15).all()
+            expected = [1,1,1] if count == 3 and "three-plane" in case else ([2,2] if count == 4 else [2,1])
+            assert np.bincount(s.region(s.centers())).tolist() == expected
+        p = np.array([.5,.5])
+        assert abs(s([p+1e-9*s.normal])[0]-s([p-1e-9*s.normal])[0]) < 1e-7
 
 
-@pytest.mark.parametrize("name", ["grid", "sobol", "triangles", "gpr-var", "gpr-grad"])
+@pytest.mark.parametrize("name", ["grid", "moe", "triangles", "gpr-var", "gpr-grad"])
 def test_designs_are_finite_reproducible_and_metered(name):
     runs = []
     for _ in range(2):
-        obs = Observations(Surface("on-plane"), 16)
+        obs = Observations(Surface("two-plane-four-peaks"), 16)
         run_arm(name, obs, seed=3)
-        assert 4 <= len(obs.x) <= 16
-        test = evaluation_set(Surface("on-plane"), 1024)
+        assert len(obs.x) == 16
+        test = evaluation_set(Surface("two-plane-four-peaks"), 1024)
         assert np.isfinite(reconstruct(obs.x, obs.y, test[0])).all()
         runs.append(obs.x)
     assert np.array_equal(*runs)
@@ -63,3 +68,35 @@ def test_target_must_persist_and_failed_checkpoint_cannot_win():
     assert qualifying_cost([row(16, .2), row(32, .03)], .05, .1) == 32
     assert qualifying_cost([row(16, .03), row(32, 0., "failed")], .05, .1) is None
     assert qualifying_cost([], .05, .1) is None
+
+
+@pytest.mark.parametrize("name", ["grid", "triangles", "gpr-var", "gpr-grad", "moe"])
+def test_budget_does_not_change_earlier_decisions(name):
+    small = Observations(Surface("smooth"), 12)
+    large = Observations(Surface("smooth"), 16)
+    run_arm(name, small, 2)
+    run_arm(name, large, 2)
+    assert np.array_equal(small.x, large.x[:12])
+
+
+def test_mixture_gate_uses_only_observed_prequential_errors():
+    from benchmark2d.mixture import gating
+    query = np.array([[.2,.2],[.8,.8]])
+    assert np.allclose(gating(query, [], []), 1/3)
+    weights = gating(query, [[.2,.2],[.8,.8]], [[0,1,2],[2,1,0]])
+    assert np.allclose(weights.sum(axis=1), 1)
+    assert weights[0,0] > weights[0,2]
+    assert weights[1,2] > weights[1,0]
+
+
+def test_plot_does_not_average_an_incomplete_paired_seed_set():
+    import matplotlib.pyplot as plt
+    from benchmark2d.report import curve
+    fig, ax = plt.subplots()
+    rows = [dict(budget=9,n=9,error=.1,seed=0),
+            dict(budget=10,n=10,error=.08,seed=0),
+            dict(budget=10,n=10,error=.06,seed=1)]
+    curve(ax, rows, "error", "black", "test", expected_seeds=[0,1])
+    assert ax.lines[0].get_xdata().tolist() == [10]
+    assert np.allclose(ax.lines[0].get_ydata(), [.07])
+    plt.close(fig)

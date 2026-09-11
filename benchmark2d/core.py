@@ -4,11 +4,12 @@ import numpy as np
 from scipy.interpolate import LinearNDInterpolator, RBFInterpolator
 
 CORNERS = np.array([[0., 0.], [1., 0.], [0., 1.], [1., 1.]])
-CASES = ("smooth", "kink", "on-plane", "offset-peaks", "jump")
+CASES = ("smooth", "two-plane-four-peaks", "three-plane-three-peaks", "two-plane-asymmetric")
 
 
 @dataclass(frozen=True)
 class Surface:
+    """Continuous affine envelopes with smooth interior peaks, never fold peaks."""
     case: str
     seed: int = 0
 
@@ -18,34 +19,52 @@ class Surface:
 
     @property
     def normal(self):
-        # Paired geometry realizations; never given to acquisition policies.
-        theta = (27 + 19 * self.seed % 110) * np.pi / 180
+        theta = np.deg2rad(27 + 19*self.seed % 110)
         return np.array([np.cos(theta), np.sin(theta)])
 
+    @property
+    def normals(self):
+        if self.case == "three-plane-three-peaks":
+            theta = np.arctan2(self.normal[1], self.normal[0])+np.arange(3)*2*np.pi/3
+            return np.column_stack([np.cos(theta), np.sin(theta)])
+        return np.array([self.normal, -self.normal])
+
+    def region(self, x):
+        return np.argmax((np.atleast_2d(x)-.5) @ self.normals.T, axis=1)
+
     def distance(self, x):
-        return (np.asarray(x) - .5) @ self.normal
+        x = np.atleast_2d(x)
+        if self.case == "smooth":
+            return np.zeros(len(x))
+        values = (x-.5) @ self.normals.T
+        winner = values.argmax(axis=1)
+        distances = []
+        for j in range(len(self.normals)):
+            denom = np.linalg.norm(self.normals[winner]-self.normals[j], axis=1)
+            distances.append(np.divide(values[np.arange(len(x)), winner]-values[:, j], denom,
+                                       out=np.full(len(x), np.inf), where=denom>0))
+        return np.min(distances, axis=0)
 
     def centers(self):
+        if self.case == "smooth":
+            return np.array([.5+.13*self.normal])
+        if self.case == "three-plane-three-peaks":
+            return .5+.27*self.normals
         tangent = np.array([-self.normal[1], self.normal[0]])
-        offset = .17 if self.case == "offset-peaks" else 0.
-        return np.array([.5 + .19 * tangent + offset * self.normal,
-                         .5 - .19 * tangent - offset * self.normal])
+        positive = [.5+.25*self.normal+v*tangent for v in (-.17, .17)]
+        negative = ([.5-.25*self.normal+v*tangent for v in (-.17, .17)]
+                    if self.case == "two-plane-four-peaks" else [.5-.25*self.normal])
+        return np.array(positive+negative)
 
     def __call__(self, x):
         x = np.atleast_2d(np.asarray(x, float))
-        h = self.distance(x)
-        base = .25 + .15 * x[:, 0] + .08 * x[:, 1]
-        if self.case == "smooth":
-            return base + .25 * np.sin(np.pi*x[:, 0])*np.sin(np.pi*x[:, 1])
-        y = base + .65 * np.abs(h)
-        if self.case in ("on-plane", "offset-peaks", "jump"):
-            tangent = np.array([-self.normal[1], self.normal[0]])
-            for center, amplitude, width in zip(self.centers(), (.9, .55), (.045, .07)):
-                delta = x - center
-                y += amplitude * np.exp(-.5*((delta@self.normal/width)**2
-                                            + (delta@tangent/.09)**2))
-        if self.case == "jump":
-            y += .45 * (h >= 0)
+        y = .25+.15*x[:, 0]+.08*x[:, 1]
+        if self.case != "smooth":
+            y += .65*np.max((x-.5) @ self.normals.T, axis=1)
+        # Shared additive bumps preserve the affine-envelope switch boundaries.
+        for i, center in enumerate(self.centers()):
+            width = .085 if self.case == "smooth" else (.055, .065, .06, .05)[i]
+            y += (.9, .7, .8, .6)[i]*np.exp(-.5*np.sum(((x-center)/width)**2, axis=1))
         return y
 
 
@@ -134,12 +153,12 @@ def evaluation_set(surface, n=16384):
     return x, y, scale, band, peak
 
 
-def score(surface, observations, test):
+def score(surface, observations, test, secondary=True):
     x, truth, scale, band, peak = test
     yhat = reconstruct(observations.x, observations.y, x)
-    rbf = reconstruct(observations.x, observations.y, x, "rbf")
+    rbf = reconstruct(observations.x, observations.y, x, "rbf") if secondary else None
     return dict(n=len(observations.x), n_requests=observations.requests,
                 error=rmse(yhat, truth, scale), band_error=rmse(yhat[band], truth[band], scale),
                 peak_error=rmse(yhat[peak], truth[peak], scale),
-                rbf_error=rmse(rbf, truth, scale), scale=scale,
+                rbf_error=rmse(rbf, truth, scale) if secondary else None, scale=scale,
                 x=observations.x.tolist(), y=observations.y.tolist())
