@@ -5,9 +5,10 @@ the only arm that reaches the global and boundary targets on all three seeds of
 all five cases within the tested budgets. This is synthetic evidence for a next
 experiment, not a production GENE winner.
 
-[Open the plotted report](reports/pilot/index.html). Each strategy includes a
-3-D surface/sample plot paired with error-versus-cost curves and residual maps
-at 32, 64, 128 and 256 requested evaluations. Plots use actual charged point counts.
+[Open the consolidated report](reports/pilot/index.html) or [the plot-reading guide](reports/pilot/README.md).
+Five sheets put all methods and cases together: 3-D truth, final-cap point placement,
+error-versus-cost curves, residual maps and a scorecard. Curves retain all four
+budgets; placement/maps show seed 0 at the largest cap. Actual point counts are shown.
 
 ## Cost to reach the targets
 

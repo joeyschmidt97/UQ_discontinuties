@@ -1,5 +1,14 @@
 {
-  "renderer_sha256": "a9bc80507aa02f0f1783e33c509d851fd90c0249d3736707978f13b4d557dd53",
+  "renderer_sha256": "4e63468e5cbe130440679fde2b03483aaf2e05594b79f5cf743574f819dedef8",
   "experiment_source_hash": "46f6615bd84f841348d77b6abc0a175c978b7bb1e63be703315a32cb730759ee",
-  "matplotlib": "3.11.1"
+  "matplotlib": "3.11.1",
+  "figure_files": [
+    "01-manifold-reference.png",
+    "02-point-placement.png",
+    "03-error-versus-points.png",
+    "04-reconstruction-error-map.png",
+    "05-performance-scorecard.png"
+  ],
+  "snapshot_seed": 0,
+  "snapshot_cap": 256
 }

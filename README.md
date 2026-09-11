@@ -18,11 +18,13 @@ python -m venv .venv
 .\.venv\Scripts\python -m benchmark2d --quick
 ```
 
-Open `outputs/benchmark2d/index.html`. Each strategy has a 3-D truth/sample/triangle
-plot, a paired error-versus-evaluations chart, and an overhead residual map at each
-budget. The comparison overview shows median error and the interquartile spread
-across paired geometry/seeds. Saved `results.json` contains all sampled coordinates,
-values, actual costs, parameters, failures, package versions and a source hash.
+Open the generated index.html and README.md in the output directory. Five consolidated
+sheets show the 3-D reference manifolds, every method's point placement, error versus
+points, reconstruction error maps, and the qualification scorecard.
+
+For the saved pilot, start with [the plot-reading guide](reports/pilot/README.md).
+Placement snapshots use seed 0 at the largest cap; curves retain every budget and
+summarize all paired seeds. All observations and scores remain in results.json.
 
 The default run covers on-plane peaks, offset peaks and true jumps, three seeds,
 and caps of 32, 64 and 128 evaluations:

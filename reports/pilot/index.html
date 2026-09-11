@@ -1,99 +1,10 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>2-D sampling benchmark</title><style>body{max-width:1250px;margin:32px auto;padding:0 24px;font:16px/1.55 system-ui;color:#23313c;background:#f7f9fb}h1,h2{color:#12324b}img{width:100%;background:white}table{border-collapse:collapse;width:100%;background:white}td,th{padding:10px;text-align:left;border-bottom:1px solid #dae0e5}details{margin:18px 0}summary{cursor:pointer;font-weight:600}pre{white-space:pre-wrap}p{max-width:1050px}</style><body><h1>2-D sampling benchmark</h1>
-<p>Low-poly reconstruction from sampled values. Every evaluation is charged; four shared corners cover the box. Bands show the interquartile spread across paired seeds/geometries, not confidence intervals.</p>
-<p><b>All requested arms completed.</b> Targets: global error &le; 0.05; boundary-band error &le; 0.1. Qualification must persist through subsequent tested checkpoints. Results are synthetic pilot evidence.</p>
-<h2>smooth</h2>
-<img src="figures/smooth-comparison.png" alt="Error versus cost across methods">
-<table><tr><th>Strategy</th><th>Qualified seeds</th><th>Median cost if all qualify</th><th>Median final global / band error</th></tr>
-<tr><td>grid</td><td>3/3</td><td>25.0</td><td>0.0030 / 0.0037</td></tr>
-<tr><td>sobol</td><td>3/3</td><td>20.0</td><td>0.0062 / 0.0080</td></tr>
-<tr><td>sglib</td><td>3/3</td><td>48.0</td><td>0.0388 / 0.0472</td></tr>
-<tr><td>sgpp</td><td>3/3</td><td>31.0</td><td>0.0044 / 0.0050</td></tr>
-<tr><td>gpr-var</td><td>3/3</td><td>32.0</td><td>0.0029 / 0.0036</td></tr>
-<tr><td>gpr-grad</td><td>3/3</td><td>32.0</td><td>0.0061 / 0.0090</td></tr>
-<tr><td>triangles</td><td>3/3</td><td>32.0</td><td>0.0030 / 0.0038</td></tr>
-</table>
-<p>Lowest qualifying measured median cost among completed arms: <b>sobol</b> (20 evaluations). This is a per-case pilot result, not a universal winner.</p>
-<details><summary>grid: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/smooth-grid.png" alt="grid diagnostic plots"></details>
-<details><summary>sobol: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/smooth-sobol.png" alt="sobol diagnostic plots"></details>
-<details><summary>sglib: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/smooth-sglib.png" alt="sglib diagnostic plots"></details>
-<details><summary>sgpp: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/smooth-sgpp.png" alt="sgpp diagnostic plots"></details>
-<details><summary>gpr-var: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/smooth-gpr-var.png" alt="gpr-var diagnostic plots"></details>
-<details><summary>gpr-grad: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/smooth-gpr-grad.png" alt="gpr-grad diagnostic plots"></details>
-<details><summary>triangles: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/smooth-triangles.png" alt="triangles diagnostic plots"></details>
-<h2>kink</h2>
-<img src="figures/kink-comparison.png" alt="Error versus cost across methods">
-<table><tr><th>Strategy</th><th>Qualified seeds</th><th>Median cost if all qualify</th><th>Median final global / band error</th></tr>
-<tr><td>grid</td><td>3/3</td><td>25.0</td><td>0.0043 / 0.0118</td></tr>
-<tr><td>sobol</td><td>3/3</td><td>36.0</td><td>0.0200 / 0.0416</td></tr>
-<tr><td>sglib</td><td>0/3</td><td>not reached on every seed</td><td>0.0660 / 0.1417</td></tr>
-<tr><td>sgpp</td><td>3/3</td><td>125.0</td><td>0.0177 / 0.0391</td></tr>
-<tr><td>gpr-var</td><td>3/3</td><td>32.0</td><td>0.0079 / 0.0171</td></tr>
-<tr><td>gpr-grad</td><td>3/3</td><td>128.0</td><td>0.0152 / 0.0375</td></tr>
-<tr><td>triangles</td><td>3/3</td><td>32.0</td><td>0.0033 / 0.0090</td></tr>
-</table>
-<p>Lowest qualifying measured median cost among completed arms: <b>grid</b> (25 evaluations). This is a per-case pilot result, not a universal winner.</p>
-<details><summary>grid: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/kink-grid.png" alt="grid diagnostic plots"></details>
-<details><summary>sobol: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/kink-sobol.png" alt="sobol diagnostic plots"></details>
-<details><summary>sglib: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/kink-sglib.png" alt="sglib diagnostic plots"></details>
-<details><summary>sgpp: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/kink-sgpp.png" alt="sgpp diagnostic plots"></details>
-<details><summary>gpr-var: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/kink-gpr-var.png" alt="gpr-var diagnostic plots"></details>
-<details><summary>gpr-grad: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/kink-gpr-grad.png" alt="gpr-grad diagnostic plots"></details>
-<details><summary>triangles: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/kink-triangles.png" alt="triangles diagnostic plots"></details>
-<h2>on-plane</h2>
-<img src="figures/on-plane-comparison.png" alt="Error versus cost across methods">
-<table><tr><th>Strategy</th><th>Qualified seeds</th><th>Median cost if all qualify</th><th>Median final global / band error</th></tr>
-<tr><td>grid</td><td>3/3</td><td>121.0</td><td>0.0210 / 0.0508</td></tr>
-<tr><td>sobol</td><td>1/3</td><td>not reached on every seed</td><td>0.0451 / 0.1123</td></tr>
-<tr><td>sglib</td><td>1/3</td><td>not reached on every seed</td><td>0.0683 / 0.1789</td></tr>
-<tr><td>sgpp</td><td>3/3</td><td>254.0</td><td>0.0225 / 0.0416</td></tr>
-<tr><td>gpr-var</td><td>3/3</td><td>128.0</td><td>0.0234 / 0.0558</td></tr>
-<tr><td>gpr-grad</td><td>3/3</td><td>128.0</td><td>0.0155 / 0.0260</td></tr>
-<tr><td>triangles</td><td>3/3</td><td>128.0</td><td>0.0095 / 0.0213</td></tr>
-</table>
-<p>Lowest qualifying measured median cost among completed arms: <b>grid</b> (121 evaluations). This is a per-case pilot result, not a universal winner.</p>
-<details><summary>grid: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/on-plane-grid.png" alt="grid diagnostic plots"></details>
-<details><summary>sobol: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/on-plane-sobol.png" alt="sobol diagnostic plots"></details>
-<details><summary>sglib: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/on-plane-sglib.png" alt="sglib diagnostic plots"></details>
-<details><summary>sgpp: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/on-plane-sgpp.png" alt="sgpp diagnostic plots"></details>
-<details><summary>gpr-var: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/on-plane-gpr-var.png" alt="gpr-var diagnostic plots"></details>
-<details><summary>gpr-grad: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/on-plane-gpr-grad.png" alt="gpr-grad diagnostic plots"></details>
-<details><summary>triangles: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/on-plane-triangles.png" alt="triangles diagnostic plots"></details>
-<h2>offset-peaks</h2>
-<img src="figures/offset-peaks-comparison.png" alt="Error versus cost across methods">
-<table><tr><th>Strategy</th><th>Qualified seeds</th><th>Median cost if all qualify</th><th>Median final global / band error</th></tr>
-<tr><td>grid</td><td>3/3</td><td>64.0</td><td>0.0190 / 0.0120</td></tr>
-<tr><td>sobol</td><td>3/3</td><td>132.0</td><td>0.0371 / 0.0290</td></tr>
-<tr><td>sglib</td><td>0/3</td><td>not reached on every seed</td><td>0.1376 / 0.2067</td></tr>
-<tr><td>sgpp</td><td>3/3</td><td>121.0</td><td>0.0257 / 0.0420</td></tr>
-<tr><td>gpr-var</td><td>3/3</td><td>128.0</td><td>0.0193 / 0.0116</td></tr>
-<tr><td>gpr-grad</td><td>3/3</td><td>128.0</td><td>0.0166 / 0.0323</td></tr>
-<tr><td>triangles</td><td>3/3</td><td>64.0</td><td>0.0094 / 0.0101</td></tr>
-</table>
-<p>Lowest qualifying measured median cost among completed arms: <b>grid, triangles</b> (64 evaluations). This is a per-case pilot result, not a universal winner.</p>
-<details><summary>grid: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/offset-peaks-grid.png" alt="grid diagnostic plots"></details>
-<details><summary>sobol: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/offset-peaks-sobol.png" alt="sobol diagnostic plots"></details>
-<details><summary>sglib: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/offset-peaks-sglib.png" alt="sglib diagnostic plots"></details>
-<details><summary>sgpp: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/offset-peaks-sgpp.png" alt="sgpp diagnostic plots"></details>
-<details><summary>gpr-var: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/offset-peaks-gpr-var.png" alt="gpr-var diagnostic plots"></details>
-<details><summary>gpr-grad: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/offset-peaks-gpr-grad.png" alt="gpr-grad diagnostic plots"></details>
-<details><summary>triangles: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/offset-peaks-triangles.png" alt="triangles diagnostic plots"></details>
-<h2>jump</h2>
-<img src="figures/jump-comparison.png" alt="Error versus cost across methods">
-<table><tr><th>Strategy</th><th>Qualified seeds</th><th>Median cost if all qualify</th><th>Median final global / band error</th></tr>
-<tr><td>grid</td><td>2/3</td><td>not reached on every seed</td><td>0.0361 / 0.0972</td></tr>
-<tr><td>sobol</td><td>0/3</td><td>not reached on every seed</td><td>0.0548 / 0.1405</td></tr>
-<tr><td>sglib</td><td>0/3</td><td>not reached on every seed</td><td>0.0535 / 0.1265</td></tr>
-<tr><td>sgpp</td><td>0/3</td><td>not reached on every seed</td><td>0.0797 / 0.1777</td></tr>
-<tr><td>gpr-var</td><td>2/3</td><td>not reached on every seed</td><td>0.0378 / 0.0916</td></tr>
-<tr><td>gpr-grad</td><td>0/3</td><td>not reached on every seed</td><td>0.0719 / 0.1866</td></tr>
-<tr><td>triangles</td><td>3/3</td><td>256.0</td><td>0.0293 / 0.0788</td></tr>
-</table>
-<p>Lowest qualifying measured median cost among completed arms: <b>triangles</b> (256 evaluations). This is a per-case pilot result, not a universal winner.</p>
-<details><summary>grid: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/jump-grid.png" alt="grid diagnostic plots"></details>
-<details><summary>sobol: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/jump-sobol.png" alt="sobol diagnostic plots"></details>
-<details><summary>sglib: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/jump-sglib.png" alt="sglib diagnostic plots"></details>
-<details><summary>sgpp: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/jump-sgpp.png" alt="sgpp diagnostic plots"></details>
-<details><summary>gpr-var: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/jump-gpr-var.png" alt="gpr-var diagnostic plots"></details>
-<details><summary>gpr-grad: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/jump-gpr-grad.png" alt="gpr-grad diagnostic plots"></details>
-<details><summary>triangles: surface, cost curve and residuals at each budget</summary><img loading="lazy" src="figures/jump-triangles.png" alt="triangles diagnostic plots"></details>
-<h2>Protocol and interpretation</h2><p>The strategies see only evaluations they purchase. Truth, boundaries and test points never enter acquisition. The surface is a synthetic scalar proxy, not a GENE solve. The grid is regenerated at each budget; its point color indicates enumeration, not adaptive search. Sobol uses complete power-of-two blocks plus four corners, and prescribed sparse grids may underspend. All charts use actual costs. Independent budget runs share seeds but need not form nested trajectories. The peak-region metric, secondary native errors, parameters and all samples are in results.json. A true jump is smeared by continuous triangulation; boundary errors expose that limitation. Noise, failed GENE runs, adaptive spectra and 4-D transfer remain follow-up experiments.</p></body></html>
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>2-D benchmark overview</title><style>body{max-width:1600px;margin:28px auto;padding:0 24px;font:16px/1.55 system-ui;color:#23313c;background:#f7f9fb}h1,h2{color:#12324b}img{width:100%;background:white}section{margin:48px 0}nav{padding:16px;background:#e8edf3}table{border-collapse:collapse;width:100%;background:white}td,th{padding:10px;text-align:left;border-bottom:1px solid #dae0e5}pre{white-space:pre-wrap}p{max-width:1100px}</style><body><h1>2-D benchmark — five comparison sheets</h1>
+<p>Start with the reference surfaces, compare the point placement, then judge error per evaluation. The placement maps show one seed; the error curves summarize all paired seeds.</p>
+<p><a href="README.md">Plot-reading guide</a> · <a href="../../RESULTS.md">Detailed results</a> · <a href="results.json">Saved data</a></p>
+<nav><a href="#sheet-1">1. Start with the true manifolds</a> · <a href="#sheet-2">2. Compare point placement across all methods</a> · <a href="#sheet-3">3. Judge accuracy per evaluation</a> · <a href="#sheet-4">4. Diagnose missed peaks and boundaries</a> · <a href="#sheet-5">5. Read the qualification scorecard</a></nav>
+<section id="sheet-1"><h2>1. Start with the true manifolds</h2><p>Exact synthetic surfaces, before any method samples them. All views share the same camera, height range and color scale. The jump surface has a genuine discontinuity; rendered mesh cells visually bridge its edge.</p><a href="figures/01-manifold-reference.png"><img src="figures/01-manifold-reference.png" alt="1. Start with the true manifolds"></a></section>
+<section id="sheet-2"><h2>2. Compare point placement across all methods</h2><p>Rows are test surfaces; columns are methods. Gray shading shows truth, teal marks the crossing/jump boundary, and dots show sampled locations. These are final-cap snapshots of one paired seed, not averages. N includes the four shared corner evaluations; some methods underspend.</p><a href="figures/02-point-placement.png"><img src="figures/02-point-placement.png" alt="2. Compare point placement across all methods"></a></section>
+<section id="sheet-3"><h2>3. Judge accuracy per evaluation</h2><p>Each panel overlays all methods. Top: global RMS; bottom: boundary-band RMS. Lines are medians and shading is the interquartile spread across paired seeds/geometries, not confidence intervals. Both axes use identical limits in all panels. Dashed lines show the qualification targets. Lower and further left is better; placement alone is not a score.</p><a href="figures/03-error-versus-points.png"><img src="figures/03-error-versus-points.png" alt="3. Judge accuracy per evaluation"></a></section>
+<section id="sheet-4"><h2>4. Diagnose missed peaks and boundaries</h2><p>The same row/column layout as the placement sheet, using the same seed and cap. Dark is accurate; bright is inaccurate. A single normalized color scale makes methods comparable. Values above 0.5 saturate at the brightest color. Cyan marks the true boundary.</p><a href="figures/04-reconstruction-error-map.png"><img src="figures/04-reconstruction-error-map.png" alt="4. Diagnose missed peaks and boundaries"></a></section>
+<section id="sheet-5"><h2>5. Read the qualification scorecard</h2><p>A method qualifies only when every seed reaches both targets and stays below them at subsequent tested checkpoints. N is the median measured qualifying cost. Green does not imply that a method wins every case or is ready for GENE.</p><a href="figures/05-performance-scorecard.png"><img src="figures/05-performance-scorecard.png" alt="5. Read the qualification scorecard"></a></section>
+<h2>Qualification values</h2><table><tr><th>Case</th><th>Regular grid</th><th>Sobol</th><th>Ionut / sg_lib</th><th>SG++</th><th>GP uncertainty</th><th>GP gradient</th><th>Triangles</th></tr><tr><th>smooth</th><td>3/3 seeds<br>N = 25</td><td>3/3 seeds<br>N = 20</td><td>3/3 seeds<br>N = 48</td><td>3/3 seeds<br>N = 31</td><td>3/3 seeds<br>N = 32</td><td>3/3 seeds<br>N = 32</td><td>3/3 seeds<br>N = 32</td></tr><tr><th>kink</th><td>3/3 seeds<br>N = 25</td><td>3/3 seeds<br>N = 36</td><td>0/3 seeds<br>not qualified</td><td>3/3 seeds<br>N = 125</td><td>3/3 seeds<br>N = 32</td><td>3/3 seeds<br>N = 128</td><td>3/3 seeds<br>N = 32</td></tr><tr><th>on-plane</th><td>3/3 seeds<br>N = 121</td><td>1/3 seeds<br>not qualified</td><td>1/3 seeds<br>not qualified</td><td>3/3 seeds<br>N = 254</td><td>3/3 seeds<br>N = 128</td><td>3/3 seeds<br>N = 128</td><td>3/3 seeds<br>N = 128</td></tr><tr><th>offset-peaks</th><td>3/3 seeds<br>N = 64</td><td>3/3 seeds<br>N = 132</td><td>0/3 seeds<br>not qualified</td><td>3/3 seeds<br>N = 121</td><td>3/3 seeds<br>N = 128</td><td>3/3 seeds<br>N = 128</td><td>3/3 seeds<br>N = 64</td></tr><tr><th>jump</th><td>2/3 seeds<br>not qualified</td><td>0/3 seeds<br>not qualified</td><td>0/3 seeds<br>not qualified</td><td>0/3 seeds<br>not qualified</td><td>2/3 seeds<br>not qualified</td><td>0/3 seeds<br>not qualified</td><td>3/3 seeds<br>N = 256</td></tr></table></body></html>
