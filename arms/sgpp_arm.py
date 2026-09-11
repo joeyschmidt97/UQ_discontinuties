@@ -152,7 +152,7 @@ class SGppArm(Arm):
         pysgpp.createOperationHierarchisation(self.grid).doHierarchisation(alpha)
         return alpha
 
-    def _repair(self, y, coords, alpha):
+    def _repair(self, y, coords, alpha, grid=None):
         """Replace NaN evaluations per `nan_policy`. Returns (values, n_bad)."""
         bad = ~np.isfinite(y)
         n_bad = int(bad.sum())
@@ -163,7 +163,7 @@ class SGppArm(Arm):
         if self.nan_policy == "zero":
             y = np.where(bad, 0.0, y)
         elif self.nan_policy == "fill":
-            fill = (self._eval(coords[bad], alpha) if alpha is not None
+            fill = (self._eval(coords[bad], alpha, grid=grid) if alpha is not None
                     else np.zeros(n_bad))
             y = y.copy()
             y[bad] = fill
@@ -171,12 +171,15 @@ class SGppArm(Arm):
             raise ValueError("nan_policy must be 'fill', 'zero' or 'error'")
         return y, n_bad
 
-    def _eval(self, X, alpha=None):
+    def _eval(self, X, alpha=None, grid=None):
         X = np.atleast_2d(np.asarray(X, float))
         if len(X) == 0:
             return np.empty(0)
         alpha = self.alpha if alpha is None else alpha
-        op = pysgpp.createOperationMultipleEval(self.grid, _to_matrix(X))
+        # The SWIG operation borrows DataMatrix storage. Keep it alive until
+        # mult() finishes; an inline temporary can cause a native segfault.
+        data = _to_matrix(X)
+        op = pysgpp.createOperationMultipleEval(self.grid if grid is None else grid, data)
         res = pysgpp.DataVector(len(X))
         op.mult(alpha, res)
         return _from_vector(res, len(X))
@@ -199,6 +202,8 @@ class SGppArm(Arm):
         self.grid.getGenerator().regular(level)
 
         coords = grid_coords(gs)
+        if len(coords) > budget:
+            raise ValueError("budget cannot fund the initial SG++ grid")
         y, nb = self._repair(np.asarray(oracle(coords), float), coords, None)
         self.n_failed += nb
         fx = list(y)
@@ -211,6 +216,7 @@ class SGppArm(Arm):
 
         while n_evals < budget and newest_max > self.target_surplus:
             n0 = gs.getSize()
+            previous_grid = self.grid.clone()
             # never overshoot the budget on the last step
             batch = int(min(self.refine_batch, max(1, budget - n_evals)))
             self.grid.getGenerator().refine(_make_functor(self.refine, self.alpha, batch))
@@ -222,10 +228,12 @@ class SGppArm(Arm):
             if n_evals + len(new_coords) > budget:
                 # refine() can add more than `batch` points (parent completion);
                 # stop rather than silently spend past the cap.
+                self.grid = previous_grid
+                gs = self.grid.getStorage()
                 break
 
             yv, nb = self._repair(np.asarray(oracle(new_coords), float),
-                                  new_coords, self.alpha)
+                                  new_coords, self.alpha, grid=previous_grid)
             self.n_failed += nb
             fx.extend(yv.tolist())
             n_evals += len(yv)
@@ -272,6 +280,8 @@ class SGppRegularArm(SGppArm):
         self.grid = self._new_grid(dim)
         self.grid.getGenerator().regular(level)
         coords = grid_coords(self.grid.getStorage())
+        if len(coords) > budget:
+            raise ValueError("budget cannot fund the initial SG++ grid")
         y, nb = self._repair(np.asarray(oracle(coords), float), coords, None)
         self.n_failed = nb
         self.alpha = self._hierarchise(list(y))

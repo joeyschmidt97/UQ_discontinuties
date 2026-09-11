@@ -1,0 +1,9 @@
+# Validated on Linux x86_64, CPython 3.11.16.
+-r requirements.txt
+pysgpp==3.3.1
+numpy==1.26.4
+scipy==1.17.1
+scikit-learn==1.9.0
+matplotlib==3.11.1
+threadpoolctl==3.6.0
+pytest==9.1.1

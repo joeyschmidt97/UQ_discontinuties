@@ -85,6 +85,10 @@ class _Grid:
     def getGenerator(self):
         return _Generator(self)
 
+    def clone(self):
+        import copy
+        return copy.deepcopy(self)
+
 
 class _DataVector(list):
     def __init__(self, arg):
