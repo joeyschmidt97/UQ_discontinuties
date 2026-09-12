@@ -1,6 +1,6 @@
 {
-  "renderer_sha256": "916bd8df8259b7461980487deaa251bbd5bfc024b09d231112c09121ce6b8d2b",
-  "experiment_source_hash": "cb1eb0a7d95655e7f57736d218dc47b459b7c8cd85a97a86723e95390ca4aa1f",
+  "renderer_sha256": "7f451315434e4bade2300d623c42bd5003f9207d016548513abb2ff697e4050f",
+  "experiment_source_hash": "29a57bb2d7143bcf66c84942f88a646a4b368382a9e3b86ae31cc94e801324d3+cb1eb0a7d95655e7f57736d218dc47b459b7c8cd85a97a86723e95390ca4aa1f",
   "matplotlib": "3.11.1",
   "figure_files": [
     "01-manifold-reference.png",

@@ -1,4 +1,5 @@
 """Numerical contracts that can otherwise silently change the winning arm."""
+import json
 import numpy as np
 import pytest
 from benchmark2d.core import (Surface, Observations, BudgetExceeded, evaluation_set,
@@ -48,7 +49,8 @@ def test_peaks_are_inside_regions_and_folds_are_continuous(case,count):
         assert abs(s([p+1e-9*s.normal])[0]-s([p-1e-9*s.normal])[0]) < 1e-7
 
 
-@pytest.mark.parametrize("name", ["grid", "moe", "triangles", "gpr-var", "gpr-grad", "gpr-blend", "moe-tri75", "moe-tri50"])
+@pytest.mark.parametrize("name", ["grid", "moe", "triangles", "gpr-var", "gpr-grad", "gpr-blend", "moe-tri75", "moe-tri50",
+                                  "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20"])
 def test_designs_are_finite_reproducible_and_metered(name):
     runs = []
     for _ in range(2):
@@ -70,7 +72,8 @@ def test_target_must_persist_and_failed_checkpoint_cannot_win():
     assert qualifying_cost([], .05, .1) is None
 
 
-@pytest.mark.parametrize("name", ["grid", "triangles", "gpr-var", "gpr-grad", "moe", "gpr-blend", "moe-tri75", "moe-tri50"])
+@pytest.mark.parametrize("name", ["grid", "triangles", "gpr-var", "gpr-grad", "moe", "gpr-blend", "moe-tri75", "moe-tri50",
+                                  "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20"])
 def test_budget_does_not_change_earlier_decisions(name):
     small = Observations(Surface("smooth"), 12)
     large = Observations(Surface("smooth"), 16)
@@ -125,3 +128,66 @@ def test_acquisition_blend_normalizes_before_weighting():
     assert np.allclose(normalized_blend([0., 0.], [0., 0.], .5), 0)
     with pytest.raises(ValueError):
         normalized_blend([1.], [1.], 1.1)
+
+
+def test_gp_blend_weights_are_declared_and_ordered():
+    from benchmark2d.strategies import GP_BLENDS, ARMS
+    assert GP_BLENDS["gpr-blend"] == GP_BLENDS["gpr-u50-g50"] == .5
+    assert [GP_BLENDS[f"gpr-u{u}-g{100-u}"] for u in (20, 30, 50, 70, 80)] == [.2, .3, .5, .7, .8]
+    assert all(name in ARMS for name in GP_BLENDS)
+
+
+def test_fifty_fifty_blend_alias_reproduces_the_original_arm():
+    old, new = Observations(Surface("two-plane-four-peaks"), 14), Observations(Surface("two-plane-four-peaks"), 14)
+    run_arm("gpr-blend", old, 1)
+    run_arm("gpr-u50-g50", new, 1)
+    assert np.array_equal(old.x, new.x)
+
+
+def test_blend_share_shifts_the_design_away_from_the_gradient_arm():
+    designs = {}
+    for name in ("gpr-grad", "gpr-u20-g80", "gpr-u80-g20", "gpr-var"):
+        obs = Observations(Surface("two-plane-four-peaks"), 14)
+        run_arm(name, obs, 1)
+        designs[name] = obs.x
+    assert not np.array_equal(designs["gpr-u20-g80"], designs["gpr-u80-g20"])
+    assert not np.array_equal(designs["gpr-u20-g80"], designs["gpr-grad"])
+    assert not np.array_equal(designs["gpr-u80-g20"], designs["gpr-var"])
+
+
+def _payload(arms, errors, cases=("smooth",), seeds=(0,), budgets=(8,)):
+    rows = [dict(arm=arm, case=case, seed=seed, budget=budget, n=budget, status="ok",
+                 error=errors[arm], band_error=errors[arm])
+            for arm in arms for case in cases for seed in seeds for budget in budgets]
+    return dict(config=dict(cases=list(cases), seeds=list(seeds), budgets=list(budgets), arms=list(arms),
+                            test_size=1024, epsilon=.05, band_epsilon=.1, protocol="p"),
+                source_hash="h-"+"".join(arms), commit="c", rows=rows)
+
+
+def test_merge_keeps_only_the_best_added_arms_and_records_provenance(tmp_path):
+    from benchmark2d.merge import merge
+    base, extra = _payload(["grid"], dict(grid=.04)), _payload(["a", "b", "c"], dict(a=.01, b=.03, c=.02))
+    base_path, extra_path = tmp_path/"base.json", tmp_path/"extra.json"
+    base_path.write_text(json.dumps(base)); extra_path.write_text(json.dumps(extra))
+    merged, scored, selected = merge(base_path, [extra_path], top=2)
+    assert [arm for arm, _, _ in scored] == ["a", "c", "b"]
+    assert selected == ["a", "c"]
+    assert merged["config"]["arms"] == ["grid", "a", "c"]
+    assert {r["arm"] for r in merged["rows"]} == {"grid", "a", "c"}
+    assert [p["source_hash"] for p in merged["provenance"]] == [base["source_hash"], extra["source_hash"]]
+
+
+def test_merge_refuses_mismatched_configurations_and_duplicate_arms(tmp_path):
+    from benchmark2d.merge import merge
+    base = _payload(["grid"], dict(grid=.04))
+    base_path = tmp_path/"base.json"
+    base_path.write_text(json.dumps(base))
+    other = _payload(["a"], dict(a=.01), seeds=(0, 1))
+    other_path = tmp_path/"other.json"
+    other_path.write_text(json.dumps(other))
+    with pytest.raises(ValueError, match="seeds"):
+        merge(base_path, [other_path], top=1)
+    same = tmp_path/"same.json"
+    same.write_text(json.dumps(_payload(["grid"], dict(grid=.01))))
+    with pytest.raises(ValueError, match="already exist"):
+        merge(base_path, [same], top=1)

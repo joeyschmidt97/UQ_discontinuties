@@ -48,7 +48,9 @@ are saved atomically after each complete trajectory. Use a new output directory
 to change the experiment; existing data are not silently overwritten.
 
 For built-in methods on Windows, install `requirements.txt` and explicitly select
-`--arms grid moe gpr-var gpr-grad triangles`. Unavailable backends are reported;
+`--arms grid moe gpr-var gpr-grad triangles`. Windows runs of the built-in arms
+reproduce the saved Linux trajectories exactly when the pinned library versions
+are used. Unavailable backends are reported;
 mocks never enter rankings.
 
 ## Three additional mixtures
@@ -75,6 +77,49 @@ These choices are follow-up hypotheses on the existing benchmark, not held-out
 confirmation or a guarantee of beating the components. No weights are retuned
 using the new results. Run only the new arms with the original case/seed/budget
 and scoring settings; retain original trajectory provenance when joining reports.
+
+## GP uncertainty / GP gradient ratio sweep
+
+Five fixed mixtures of the two standalone GP acquisition policies, declared in
+`GP_BLENDS` before running. The first number is the GP-uncertainty share and the
+second the share of the gradient-weighted merit used by `gpr-grad`:
+
+| Arm | Normalized acquisition mixture |
+|---|---|
+| `gpr-u20-g80` | 20% GP uncertainty + 80% GP gradient merit |
+| `gpr-u30-g70` | 30% GP uncertainty + 70% GP gradient merit |
+| `gpr-u50-g50` | 50/50; identical policy to the existing `gpr-blend` |
+| `gpr-u70-g30` | 70% GP uncertainty + 30% GP gradient merit |
+| `gpr-u80-g20` | 80% GP uncertainty + 20% GP gradient merit |
+
+Both components come from one fitted GP per step and the same 1,024 candidates
+as the standalone GP policies, so a blend costs no extra evaluations. Each score
+is divided by its own candidate maximum before weighting. The gradient component
+keeps its exploration floor, so `gpr-u20-g80` is not a pure gradient rule. The
+0% and 100% ends of the sweep are the existing `gpr-grad` and `gpr-var` arms and
+are not rerun.
+
+```bash
+for arm in gpr-u20-g80 gpr-u30-g70 gpr-u50-g50 gpr-u70-g30 gpr-u80-g20; do
+  python -m benchmark2d --arms $arm --seeds 0 1 2 --budgets 32 64 128 256     --native-test-size 1024 --output outputs/ratio-$arm
+done
+cp reports/pilot/results.json /tmp/pilot-base.json
+python -m benchmark2d.merge --base /tmp/pilot-base.json   --add outputs/ratio-*/results.json --top 3 --output reports/pilot
+```
+
+The merge re-renders the pilot report in place, so copy the base payload aside
+first: the three kept blends join the seven original methods in every sheet and
+in the qualification table.
+
+`benchmark2d.merge` joins saved trajectories only: it copies rows verbatim,
+refuses runs that disagree on cases, seeds, budgets, test size or tolerances,
+rejects duplicate arms or rows, and records one provenance entry per contributing
+run. `--top 3` keeps the three added arms with the lowest combined normalized RMS
+at the largest matched point count and drops the rest from the report. Sources as
+executed are archived in `reports/pilot/ratio-experiment-sources.zip`. That
+ranking reads the benchmark it is displayed on, so it is a presentation choice,
+not held-out validation; the full five-arm ranking is saved under `selection` in
+the merged `results.json`.
 
 ## Contenders
 

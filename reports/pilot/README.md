@@ -1,6 +1,6 @@
 # Plot guide â€” start here
 
-Five overview images consolidate the saved results. All 7 methods and
+Five overview images consolidate the saved results. All 10 methods and
 all 4 test cases are shown together. **Every integer point count from 4 to 256 is scored on one nested trajectory per method and seed.**
 
 Read these in order:
@@ -63,7 +63,7 @@ No jump or on-fold Gaussian case is included.
 
 ## Pilot takeaway
 
-Methods qualifying on every seed of every case: **Progressive grid, Mixture of experts, GP uncertainty, GP gradient, Triangles**.
+Methods qualifying on every seed of every case: **Progressive grid, Mixture of experts, GP uncertainty, GP gradient, Triangles, GP unc/grad 50/50, GP unc/grad 70/30, GP unc/grad 30/70**.
 Read the HTML qualification table for per-case costs; qualifying everywhere does not mean
 winning every case. These results select finalists for harder tests, not a
 production GENE runner. See [the detailed results](../../RESULTS.md).

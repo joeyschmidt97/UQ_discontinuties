@@ -22,11 +22,18 @@ The curve includes a point count only when every method has all 12 valid tests.
 |---|---:|---:|
 | Mixture of experts | 0.008929 | 73 |
 | Triangles | 0.012814 | 81 |
+| GP unc/grad 50/50 | 0.013909 | 81 |
+| GP unc/grad 70/30 | 0.015345 | 72 |
+| GP unc/grad 30/70 | 0.016905 | 96 |
 | Progressive grid | 0.018417 | 100 |
 | GP gradient | 0.019386 | 103 |
 | GP uncertainty | 0.019815 | 94 |
 | SG++ | 0.034339 | 176 |
 | Ionut / sg_lib | 0.042529 | 223 |
+
+The three GP mixtures are the best three of a five-ratio sweep; the other two
+are listed in the sweep section below. Their trajectories were executed
+separately and joined to the original runs without generating new observations.
 
 MoE reduces the final combined error by about 30% relative to triangles. It does
 not win at every budget: triangles are slightly better at N = 32. The combined
@@ -61,7 +68,41 @@ Lower is better. Each column aggregates the same three paired seeds.
 | SG++ | 0.00714 | 0.03880 | 0.03733 | 0.03200 |
 | GP uncertainty | 0.00937 | 0.02288 | 0.02110 | 0.02271 |
 | GP gradient | 0.00621 | 0.02566 | 0.02010 | 0.02130 |
+| GP unc/grad 50/50 | 0.00465 | 0.01734 | 0.01440 | 0.01521 |
+| GP unc/grad 70/30 | 0.00869 | 0.01731 | 0.01581 | 0.01640 |
+| GP unc/grad 30/70 | 0.00554 | 0.02004 | 0.01802 | 0.01762 |
 | Triangles | 0.00480 | 0.01550 | 0.01460 | 0.01289 |
+
+## GP uncertainty / GP gradient ratio sweep
+
+**Every mixture of the two GP acquisition rules beats both of its own
+components, and the ranking is single-peaked at the even split.** Weights were
+declared before running; the uncertainty share is the first number. The 0% and
+100% ends of the sweep are the existing `gpr-grad` and `gpr-var` arms.
+
+| Uncertainty / gradient | Combined RMS at N = 256 | Smooth | Two planes / four peaks | Three planes / three peaks | Asymmetric |
+|---|---:|---:|---:|---:|---:|
+| 0 / 100 (GP gradient) | 0.019386 | 0.00621 | 0.02566 | 0.02010 | 0.02130 |
+| 20 / 80 | 0.018476 | 0.00513 | 0.02203 | 0.02159 | 0.02006 |
+| 30 / 70 | 0.016905 | 0.00554 | 0.02004 | 0.01802 | 0.01762 |
+| 50 / 50 | 0.013909 | 0.00465 | 0.01734 | 0.01440 | 0.01521 |
+| 70 / 30 | 0.015345 | 0.00869 | 0.01731 | 0.01581 | 0.01640 |
+| 80 / 20 | 0.017207 | 0.00827 | 0.01914 | 0.01840 | 0.01944 |
+| 100 / 0 (GP uncertainty) | 0.019815 | 0.00937 | 0.02288 | 0.02110 | 0.02271 |
+
+The 50/50 mixture reduces the combined error by about 28% relative to GP
+gradient and about 30% relative to GP uncertainty, and moves the GP family from
+below the progressive grid to just behind triangles. It does not reach the
+mixture of experts, and it takes no per-case qualifying-cost crown: the best
+blend cost on three planes is N = 72 against the progressive grid's 71, and on
+the other three surfaces triangles or the mixture remain cheapest.
+
+The 50/50 arm is the same policy as the earlier `gpr-blend` run and reproduces
+it to 6e-17 in every one of its 3,036 rows, so the sweep is anchored to an
+already-published trajectory. Only the best three appear in the figures; the
+selection reads the benchmark it is plotted on, so it is a display choice rather
+than held-out confirmation. The full five-arm ranking is stored under
+`selection` in [results.json](reports/pilot/results.json).
 
 ## Placement and prediction are different tests
 

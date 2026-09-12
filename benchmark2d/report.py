@@ -11,7 +11,11 @@ from .core import Surface, reconstruct
 
 COLORS = dict(grid="#758398", moe="#343a40", sglib="#b07813", sgpp="#9b59b6",
               **{"gpr-var": "#007c91", "gpr-grad": "#dd5f42", "triangles": "#318448", "gpr-blend": "#e7298a",
-                 "moe-tri75": "#3b4cc0", "moe-tri50": "#a51c30"})
+                 "moe-tri75": "#3b4cc0", "moe-tri50": "#a51c30",
+                 # Uncertainty/gradient ramp: warm at a gradient-dominated mix,
+                 # cool as the uncertainty share grows.
+                 "gpr-u20-g80": "#d94801", "gpr-u30-g70": "#fdae61", "gpr-u50-g50": "#e7298a",
+                 "gpr-u70-g30": "#6a3d9a", "gpr-u80-g20": "#1f78b4"})
 
 
 def curve(ax, rows, metric, color, label, expected_seeds=None, **kw):
@@ -92,7 +96,10 @@ def render(payload, out):
     epsilon, band_epsilon = cfg["epsilon"], cfg["band_epsilon"]
     names = {"grid": "Progressive grid", "moe": "Mixture of experts", "sglib": "Ionut / sg_lib",
              "sgpp": "SG++", "gpr-var": "GP uncertainty", "gpr-grad": "GP gradient", "triangles": "Triangles", "gpr-blend": "GP grad/unc 50/50",
-             "moe-tri75": "MoE/tri 75/25", "moe-tri50": "MoE/tri 50/50"}
+             "moe-tri75": "MoE/tri 75/25", "moe-tri50": "MoE/tri 50/50",
+             "gpr-u20-g80": "GP unc/grad 20/80", "gpr-u30-g70": "GP unc/grad 30/70",
+             "gpr-u50-g50": "GP unc/grad 50/50", "gpr-u70-g30": "GP unc/grad 70/30",
+             "gpr-u80-g20": "GP unc/grad 80/20"}
     a, b = np.meshgrid(np.linspace(0, 1, 101), np.linspace(0, 1, 101))
     query = np.column_stack([a.ravel(), b.ravel()])
     surfaces = {case: Surface(case, seed) for case in cases}

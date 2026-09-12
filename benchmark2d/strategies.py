@@ -7,8 +7,15 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 
+# Fixed acquisition mixtures of the two standalone GP policies. The value is
+# the GP-uncertainty share; the remainder weights the gradient-weighted merit.
+# Weights are declared here before any run; none is tuned on benchmark results.
+GP_BLENDS = {"gpr-blend": .5, "gpr-u20-g80": .2, "gpr-u30-g70": .3,
+             "gpr-u50-g50": .5, "gpr-u70-g30": .7, "gpr-u80-g20": .8}
+
 ARMS = ("grid", "moe", "sglib", "sgpp", "gpr-var", "gpr-grad", "triangles",
-        "gpr-blend", "moe-tri75", "moe-tri50")
+        "gpr-blend", "moe-tri75", "moe-tri50",
+        "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20")
 
 
 def initialize(obs, seed):
@@ -34,7 +41,10 @@ def normalized_blend(first, second, first_weight):
     return first_weight*a + (1-first_weight)*b
 
 
-def gpr(obs, seed, gradient=False, blend=False):
+def gpr(obs, seed, gradient=False, blend=None):
+    """`blend` is the GP-uncertainty share of the mixed acquisition score."""
+    if blend is not None and not 0 <= blend <= 1:
+        raise ValueError("uncertainty share must be between zero and one")
     initialize(obs, seed)
     rng = np.random.default_rng(seed)
     warning_count = 0
@@ -45,7 +55,7 @@ def gpr(obs, seed, gradient=False, blend=False):
         nearest = cKDTree(obs.x).query(candidates)[0]
         _, sd = gp.predict(candidates, return_std=True)
         merit = sd.copy()
-        if gradient or blend:
+        if gradient or blend is not None:
             grad = np.zeros(len(candidates))
             for axis in range(2):
                 plus, minus = candidates.copy(), candidates.copy()
@@ -54,8 +64,8 @@ def gpr(obs, seed, gradient=False, blend=False):
                 grad += ((gp.predict(plus)-gp.predict(minus))/(plus[:, axis]-minus[:, axis]))**2
             # A small exploration floor avoids a zero score on a flat GP mean.
             merit *= .1 + np.sqrt(grad)
-            if blend:
-                merit = normalized_blend(merit, sd, .5)
+            if blend is not None:
+                merit = normalized_blend(merit, sd, 1-blend)
         merit[nearest < 1e-6] = -np.inf
         batch = []
         for _ in range(min(1, obs.remaining)):
@@ -65,7 +75,8 @@ def gpr(obs, seed, gradient=False, blend=False):
         obs(batch)
     gp, count = fit_gp(obs, seed)
     return gp.predict, dict(fit_warnings=warning_count+count, kernel=str(gp.kernel_),
-                            acquisition_weights={"gpr-grad": .5, "gpr-var": .5} if blend else None)
+                            acquisition_weights=None if blend is None else
+                            {"gpr-grad": 1-blend, "gpr-var": blend})
 
 
 def triangles(obs, seed):
@@ -112,8 +123,8 @@ def run_arm(name, obs, seed):
     if name in ("moe", "moe-tri75", "moe-tri50"):
         from .mixture import mixture
         return mixture(obs, seed, triangle_weight={"moe": 0., "moe-tri75": .25, "moe-tri50": .5}[name])
-    if name in ("gpr-var", "gpr-grad", "gpr-blend"):
-        return gpr(obs, seed, gradient=name == "gpr-grad", blend=name == "gpr-blend")
+    if name in ("gpr-var", "gpr-grad") or name in GP_BLENDS:
+        return gpr(obs, seed, gradient=name == "gpr-grad", blend=GP_BLENDS.get(name))
     if name == "triangles":
         return triangles(obs, seed)
     if name == "sglib":
