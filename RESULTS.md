@@ -8,7 +8,31 @@ three-plane case at the declared targets.
 
 Start with the [plot guide](reports/pilot/README.md) or [single-page report](reports/pilot/index.html).
 The five sheets show 3-D truth, point placement, log-log error curves, residual
-maps and qualifying costs. Every method is compared at the same integer N.
+maps and the combined performance curve; qualifying costs remain in the HTML table. Every method is compared at the same integer N.
+
+## Combined score across all tests
+
+The scorecard pools all four surfaces and three seeds at every matched integer
+N: `sqrt(mean(normalized_global_RMS ** 2))`, with equal weight for each of the
+12 tests. N is the paid point count **per test**, including the four corners.
+Fold and peak diagnostics are not added because they overlap the global metric.
+The curve includes a point count only when every method has all 12 valid tests.
+
+| Method | Combined RMS at N = 256 | First N staying at or below 0.05 through 256 |
+|---|---:|---:|
+| Mixture of experts | 0.008929 | 73 |
+| Triangles | 0.012814 | 81 |
+| Progressive grid | 0.018417 | 100 |
+| GP gradient | 0.019386 | 103 |
+| GP uncertainty | 0.019815 | 94 |
+| SG++ | 0.034339 | 176 |
+| Ionut / sg_lib | 0.042529 | 223 |
+
+MoE reduces the final combined error by about 30% relative to triangles. It does
+not win at every budget: triangles are slightly better at N = 32. The combined
+0.05 reference is not a guarantee that every individual case qualifies. Use the
+per-case curves and qualification table for that question. Machine-readable
+curves are in [aggregate-scores.json](reports/pilot/aggregate-scores.json).
 
 ## Cost to reach the declared targets
 

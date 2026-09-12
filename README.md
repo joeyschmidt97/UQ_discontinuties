@@ -5,6 +5,10 @@ reconstruction at **every integer number of paid evaluations**. Start with the
 [plot guide](reports/pilot/README.md), [five-sheet report](reports/pilot/index.html)
 or [results and interpretation](RESULTS.md).
 
+The performance scorecard combines all four surfaces and three seeds into one
+log-log error-versus-points chart for every method, with equal weight per test.
+Per-case diagnostics remain available to explain differences hidden by pooling.
+
 ## Surfaces
 
 All inputs are in the unit square. Cases are continuous, with Gaussian peaks

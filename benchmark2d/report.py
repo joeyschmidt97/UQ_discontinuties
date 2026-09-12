@@ -47,6 +47,35 @@ def qualifying_cost(rows, epsilon, band_epsilon):
     return None
 
 
+def aggregate_errors(payload):
+    """Pool normalized squared errors, equally weighting every case/seed.
+
+    Only point counts complete for the entire configured field are comparable.
+    Regional errors are not added: their evaluation sets overlap global error.
+    """
+    cfg = payload["config"]
+    expected = {(case, seed) for case in cfg["cases"] for seed in cfg["seeds"]}
+    groups = {}
+    for row in payload["rows"]:
+        if row["arm"] not in cfg["arms"] or (row["case"], row["seed"]) not in expected:
+            continue
+        if row["n"] != row["budget"] or row["status"] != "ok":
+            continue
+        key = (row["arm"], row["n"])
+        group = groups.setdefault(key, {})
+        identity = (row["case"], row["seed"])
+        if identity in group:
+            raise ValueError("duplicate case/seed at the same point count")
+        error = float(row["error"])
+        if not np.isfinite(error) or error < 0:
+            raise ValueError("combined scores require finite nonnegative errors")
+        group[identity] = error
+    counts = sorted({n for arm, n in groups})
+    common = [n for n in counts if all(set(groups.get((arm, n), {})) == expected for arm in cfg["arms"])]
+    return {arm: [dict(n=n, error=float(np.sqrt(np.mean(np.square(list(groups[arm, n].values()))))),
+                       tests=len(expected)) for n in common] for arm in cfg["arms"]}
+
+
 def render(payload, out):
     """Five consolidated sheets. Acquisition/scoring results remain untouched."""
     from matplotlib.colors import Normalize
@@ -199,39 +228,57 @@ def render(payload, out):
         cells.append(line)
         colors.append(colorline)
         table_html.append("<tr><th>"+html.escape(case)+"</th>"+"".join(hline)+"</tr>")
-    fig, ax = plt.subplots(figsize=(max(12, 2.15*len(arms)), max(4, .75*len(cases)+2.3)))
-    ax.axis("off")
-    table = ax.table(cellText=cells, rowLabels=cases, colLabels=[names[a] for a in arms],
-                     cellColours=colors, loc="center", cellLoc="center")
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1, 2.8)
-    for (i, j), cell in table.get_celld().items():
-        cell.set_edgecolor("white")
-        if i == 0:
-            cell.set_facecolor("#e8edf3")
-            cell.set_text_props(weight="bold")
-    fig.suptitle("05  Which methods reach both error targets?", fontsize=17)
-    fig.text(.5, .075, "Green: every seed qualifies. N is median measured cost to both targets, sustained at later point counts.\n"
-             "Red: at least one seed does not qualify within the tested budgets. No interpolation between checkpoints.",
-             ha="center", fontsize=11)
-    fig.subplots_adjust(left=.12, right=.98, top=.86, bottom=.18)
-    save_figure(fig, "05-performance-scorecard.png", "5. Read the qualification scorecard",
-                "A method qualifies only when every seed reaches both targets and stays below them at subsequent tested point counts. N is the median measured qualifying cost. Green does not imply that a method wins every case or is ready for GENE.")
+    aggregate = aggregate_errors(payload)
+    aggregate_payload = dict(formula="sqrt(mean((per-test RMS / per-test truth range)^2))",
+                             weighting="equal weight per case and seed; global metric only",
+                             cases=cases, seeds=cfg["seeds"], curves=aggregate)
+    (out/"aggregate-scores.json").write_text(json.dumps(aggregate_payload, indent=2), encoding="utf-8")
+    fig, ax = plt.subplots(figsize=(12.5, 7.8), layout="constrained")
+    ordered_arms = sorted(arms, key=lambda arm: aggregate[arm][-1]["error"] if aggregate[arm] else np.inf)
+    for arm in ordered_arms:
+        points = aggregate[arm]
+        if not points:
+            continue
+        x = [p["n"] for p in points]
+        y = [p["error"] for p in points]
+        ax.plot(x, y, color=COLORS[arm], lw=2.5 if arm == "moe" else 1.8,
+                label=f"{names[arm]}  ({y[-1]:.4f})")
+        selected = [p for p in points if p["n"] in cfg["budgets"]]
+        ax.scatter([p["n"] for p in selected], [p["error"] for p in selected],
+                   color=COLORS[arm], s=24, zorder=3)
+    ax.axhline(epsilon, color="#777777", ls=":", lw=1)
+    ax.set(xscale="log", yscale="log", xlim=(4, cap*1.12),
+           xlabel="Paid points per test (four common corners included)",
+           ylabel="Combined normalized RMS across all test cases and seeds")
+    ax.grid(alpha=.2, which="both")
+    ax.spines[["right", "top"]].set_visible(False)
+    if any(aggregate.values()):
+        last_n = next(points[-1]["n"] for points in aggregate.values() if points)
+        ax.legend(title=f"Methods ordered by error at N = {last_n}", loc="upper right", fontsize=10)
+    else:
+        ax.text(.5, .5, "No point count has a complete matched field", transform=ax.transAxes, ha="center")
+    ax.set_title(f"05  Combined performance | {len(cases)} surfaces x {len(cfg['seeds'])} seeds | all methods", fontsize=16, pad=16)
+    fig.supxlabel("Equal-weight pooled RMS of the per-test normalized errors; every integer N is measured.\n"
+                  f"Dots mark diagnostic checkpoints. Dotted line: {epsilon:g} aggregate reference, not per-case qualification.", fontsize=10)
+    save_figure(fig, "05-performance-scorecard.png", "5. Compare combined performance across all tests",
+                "One curve per method pools global normalized squared errors across every surface and seed, then takes the square root. "
+                "All tests receive equal weight at the same paid point count. Fold-band and peak errors remain separate diagnostics, "
+                "avoiding double counting. Lower is better. An aggregate target does not guarantee that every test passes; "
+                "the per-case qualification table remains below.")
 
     qualified_names = ", ".join(names[arm] for arm in arms if qualifies_everywhere[arm]) or "None within the tested budgets"
-    guide = f"""# Plot guide — start here
+    guide = f"""# Plot guide â€” start here
 
 Five overview images consolidate the saved results. All {len(arms)} methods and
 all {len(cases)} test cases are shown together. **Every integer point count from 4 to {cap} is scored on one nested trajectory per method and seed.**
 
 Read these in order:
 
-1. [True 3-D manifolds](figures/01-manifold-reference.png) — what is being sampled.
-2. [Point placement](figures/02-point-placement.png) — all methods side by side; rows are surfaces, columns are methods.
-3. [Error versus points](figures/03-error-versus-points.png) — the main accuracy/cost comparison, all methods on each chart.
-4. [Error maps](figures/04-reconstruction-error-map.png) — where the low-poly reconstruction misses a spike or boundary.
-5. [Performance scorecard](figures/05-performance-scorecard.png) — which methods meet both targets and at what cost.
+1. [True 3-D manifolds](figures/01-manifold-reference.png) â€” what is being sampled.
+2. [Point placement](figures/02-point-placement.png) â€” all methods side by side; rows are surfaces, columns are methods.
+3. [Error versus points](figures/03-error-versus-points.png) â€” the main accuracy/cost comparison, all methods on each chart.
+4. [Error maps](figures/04-reconstruction-error-map.png) â€” where the low-poly reconstruction misses a spike or boundary.
+5. [Performance scorecard](figures/05-performance-scorecard.png) â€” one combined error-versus-points curve per method, pooling all surfaces and seeds.
 
 Or open [the single scrolling report](index.html), which includes all five sheets.
 
@@ -244,6 +291,22 @@ Or open [the single scrolling report](index.html), which includes all five sheet
 - **Winning:** smaller error with fewer actual evaluations is better. Qualification requires global RMS/range <= {epsilon:g} and boundary RMS/range <= {band_epsilon:g}, sustained through subsequent tested point counts. A dense-looking cluster of dots is not itself evidence of accuracy.
 - **Snapshot versus curve:** the dots show one seed; curves summarize all seeds. Different seeds rotate the geometry. Do not expect the snapshot's individual error to equal the median curve.
 - **Budgets:** one trajectory per case/seed/method, scored at every integer N. Every curve compares identical N across methods. Sparse-grid batches are evaluated in prescribed order; a prefix may end inside a batch before its native surrogate can be updated. This compares point placement through the common low-poly reconstruction, not native-model update frequency.
+
+## Combined scorecard
+
+For each N, scorecard 05 computes `sqrt(mean(error**2))` over all
+{len(cases)*len(cfg['seeds'])} case/seed tests, where each error is global RMS
+divided by that test's fixed truth range. Cases and seeds have equal weight.
+This is a pooled normalized RMS, not an arithmetic mean of RMS values or a sum
+of overlapping global/fold/peak metrics. N is points **per test**; total suite
+cost per method is {len(cases)*len(cfg['seeds'])} times N. Both axes are logarithmic.
+All configured tests and methods must be present at N for that point to appear.
+Legend values are final aggregate errors. No uncertainty band is implied.
+
+The dotted aggregate reference is not an all-tests qualification rule: easy
+cases can offset difficult cases. Retain sheet 03 and the HTML qualification
+table when diagnosing individual failures. [Combined data](aggregate-scores.json)
+contains the formula, weights and every plotted value.
 
 ## Methods and geometry
 
@@ -270,7 +333,7 @@ No jump or on-fold Gaussian case is included.
 ## Pilot takeaway
 
 Methods qualifying on every seed of every case: **{qualified_names}**.
-Read the scorecard for per-case costs; qualifying everywhere does not mean
+Read the HTML qualification table for per-case costs; qualifying everywhere does not mean
 winning every case. These results select finalists for harder tests, not a
 production GENE runner. See [the detailed results](../../RESULTS.md).
 
@@ -288,18 +351,18 @@ does not repeat every intermediate 3-D view; the full learning curves retain all
 integer point counts. RBF checks are saved only at configured checkpoints; coordinates are stored once at the final N and sliced for earlier prefixes. The previous experiments remain available in Git history.
 """
     (out/"README.md").write_text(guide, encoding="utf-8")
-    pieces = ["<h1>2-D benchmark — five comparison sheets</h1>",
+    pieces = ["<h1>2-D benchmark â€” five comparison sheets</h1>",
               "<p>Start with the reference surfaces, compare the point placement, then judge error per evaluation. "
               "The placement maps show one seed; the error curves summarize all paired seeds.</p>",
-              '<p><a href="README.md">Plot-reading guide</a> · <a href="../../RESULTS.md">Detailed results</a> · <a href="results.json">Saved data</a></p>',
-              "<nav>"+" · ".join(f'<a href="#sheet-{i}">{html.escape(title)}</a>' for i, (_, title, _) in enumerate(sheets, 1))+"</nav>"]
+              '<p><a href="README.md">Plot-reading guide</a> Â· <a href="../../RESULTS.md">Detailed results</a> Â· <a href="results.json">Saved data</a></p>',
+              "<nav>"+" Â· ".join(f'<a href="#sheet-{i}">{html.escape(title)}</a>' for i, (_, title, _) in enumerate(sheets, 1))+"</nav>"]
     for i, (filename, title, caption) in enumerate(sheets, 1):
         pieces.append(f'<section id="sheet-{i}"><h2>{html.escape(title)}</h2><p>{html.escape(caption)}</p>'
                       f'<a href="figures/{filename}"><img src="figures/{filename}" alt="{html.escape(title)}"></a></section>')
     pieces.append("<h2>Qualification values</h2><table><tr><th>Case</th>"+"".join(f"<th>{names[a]}</th>" for a in arms)+"</tr>"+"".join(table_html)+"</table>")
     failures = [r for r in rows if r["status"] != "ok"]
     if failures:
-        pieces.append("<p><strong>Incomplete field: no overall winner.</strong></p><pre>"+html.escape("\n".join(sorted({f"{r['arm']}: {r['status']} — {r['reason']}" for r in failures})))+"</pre>")
+        pieces.append("<p><strong>Incomplete field: no overall winner.</strong></p><pre>"+html.escape("\n".join(sorted({f"{r['arm']}: {r['status']} â€” {r['reason']}" for r in failures})))+"</pre>")
     document = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>2-D benchmark overview</title><style>body{max-width:1600px;margin:28px auto;padding:0 24px;font:16px/1.55 system-ui;color:#23313c;background:#f7f9fb}h1,h2{color:#12324b}img{width:100%;background:white}section{margin:48px 0}nav{padding:16px;background:#e8edf3}table{border-collapse:collapse;width:100%;background:white}td,th{padding:10px;text-align:left;border-bottom:1px solid #dae0e5}pre{white-space:pre-wrap}p{max-width:1100px}</style><body>'+"\n".join(pieces)+"</body></html>"
     (out/"index.html").write_text(document, encoding="utf-8")
     (out/"render-manifest.json").write_text(json.dumps(dict(

@@ -1,15 +1,15 @@
-# Plot guide — start here
+# Plot guide â€” start here
 
 Five overview images consolidate the saved results. All 7 methods and
 all 4 test cases are shown together. **Every integer point count from 4 to 256 is scored on one nested trajectory per method and seed.**
 
 Read these in order:
 
-1. [True 3-D manifolds](figures/01-manifold-reference.png) — what is being sampled.
-2. [Point placement](figures/02-point-placement.png) — all methods side by side; rows are surfaces, columns are methods.
-3. [Error versus points](figures/03-error-versus-points.png) — the main accuracy/cost comparison, all methods on each chart.
-4. [Error maps](figures/04-reconstruction-error-map.png) — where the low-poly reconstruction misses a spike or boundary.
-5. [Performance scorecard](figures/05-performance-scorecard.png) — which methods meet both targets and at what cost.
+1. [True 3-D manifolds](figures/01-manifold-reference.png) â€” what is being sampled.
+2. [Point placement](figures/02-point-placement.png) â€” all methods side by side; rows are surfaces, columns are methods.
+3. [Error versus points](figures/03-error-versus-points.png) â€” the main accuracy/cost comparison, all methods on each chart.
+4. [Error maps](figures/04-reconstruction-error-map.png) â€” where the low-poly reconstruction misses a spike or boundary.
+5. [Performance scorecard](figures/05-performance-scorecard.png) â€” one combined error-versus-points curve per method, pooling all surfaces and seeds.
 
 Or open [the single scrolling report](index.html), which includes all five sheets.
 
@@ -22,6 +22,22 @@ Or open [the single scrolling report](index.html), which includes all five sheet
 - **Winning:** smaller error with fewer actual evaluations is better. Qualification requires global RMS/range <= 0.05 and boundary RMS/range <= 0.1, sustained through subsequent tested point counts. A dense-looking cluster of dots is not itself evidence of accuracy.
 - **Snapshot versus curve:** the dots show one seed; curves summarize all seeds. Different seeds rotate the geometry. Do not expect the snapshot's individual error to equal the median curve.
 - **Budgets:** one trajectory per case/seed/method, scored at every integer N. Every curve compares identical N across methods. Sparse-grid batches are evaluated in prescribed order; a prefix may end inside a batch before its native surrogate can be updated. This compares point placement through the common low-poly reconstruction, not native-model update frequency.
+
+## Combined scorecard
+
+For each N, scorecard 05 computes `sqrt(mean(error**2))` over all
+12 case/seed tests, where each error is global RMS
+divided by that test's fixed truth range. Cases and seeds have equal weight.
+This is a pooled normalized RMS, not an arithmetic mean of RMS values or a sum
+of overlapping global/fold/peak metrics. N is points **per test**; total suite
+cost per method is 12 times N. Both axes are logarithmic.
+All configured tests and methods must be present at N for that point to appear.
+Legend values are final aggregate errors. No uncertainty band is implied.
+
+The dotted aggregate reference is not an all-tests qualification rule: easy
+cases can offset difficult cases. Retain sheet 03 and the HTML qualification
+table when diagnosing individual failures. [Combined data](aggregate-scores.json)
+contains the formula, weights and every plotted value.
 
 ## Methods and geometry
 
@@ -48,7 +64,7 @@ No jump or on-fold Gaussian case is included.
 ## Pilot takeaway
 
 Methods qualifying on every seed of every case: **Progressive grid, Mixture of experts, GP uncertainty, GP gradient, Triangles**.
-Read the scorecard for per-case costs; qualifying everywhere does not mean
+Read the HTML qualification table for per-case costs; qualifying everywhere does not mean
 winning every case. These results select finalists for harder tests, not a
 production GENE runner. See [the detailed results](../../RESULTS.md).
 

@@ -100,3 +100,19 @@ def test_plot_does_not_average_an_incomplete_paired_seed_set():
     assert ax.lines[0].get_xdata().tolist() == [10]
     assert np.allclose(ax.lines[0].get_ydata(), [.07])
     plt.close(fig)
+
+
+def test_combined_error_pools_squared_errors_and_requires_matched_field():
+    from benchmark2d.report import aggregate_errors
+    cfg = dict(cases=["a", "b"], seeds=[0, 1], arms=["one", "two"])
+    rows = [dict(case=case, seed=seed, arm=arm, n=9, budget=9, status="ok", error=value)
+            for arm in cfg["arms"] for case, seed, value in [("a",0,.1),("a",1,.1),("b",0,.3),("b",1,.3)]]
+    data = dict(config=cfg, rows=rows)
+    result = aggregate_errors(data)
+    assert np.isclose(result["one"][0]["error"], np.sqrt(.05))
+    assert result["one"][0]["tests"] == 4
+    assert aggregate_errors(dict(config=cfg, rows=rows[:-1])) == {"one": [], "two": []}
+    with pytest.raises(ValueError, match="duplicate"):
+        aggregate_errors(dict(config=cfg, rows=rows+[rows[0]]))
+    with pytest.raises(ValueError, match="finite"):
+        aggregate_errors(dict(config=cfg, rows=[dict(rows[0], error=float("nan"))]+rows[1:]))
