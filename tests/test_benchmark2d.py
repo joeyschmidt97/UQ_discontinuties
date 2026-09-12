@@ -48,7 +48,7 @@ def test_peaks_are_inside_regions_and_folds_are_continuous(case,count):
         assert abs(s([p+1e-9*s.normal])[0]-s([p-1e-9*s.normal])[0]) < 1e-7
 
 
-@pytest.mark.parametrize("name", ["grid", "moe", "triangles", "gpr-var", "gpr-grad"])
+@pytest.mark.parametrize("name", ["grid", "moe", "triangles", "gpr-var", "gpr-grad", "gpr-blend", "moe-tri75", "moe-tri50"])
 def test_designs_are_finite_reproducible_and_metered(name):
     runs = []
     for _ in range(2):
@@ -70,7 +70,7 @@ def test_target_must_persist_and_failed_checkpoint_cannot_win():
     assert qualifying_cost([], .05, .1) is None
 
 
-@pytest.mark.parametrize("name", ["grid", "triangles", "gpr-var", "gpr-grad", "moe"])
+@pytest.mark.parametrize("name", ["grid", "triangles", "gpr-var", "gpr-grad", "moe", "gpr-blend", "moe-tri75", "moe-tri50"])
 def test_budget_does_not_change_earlier_decisions(name):
     small = Observations(Surface("smooth"), 12)
     large = Observations(Surface("smooth"), 16)
@@ -116,3 +116,12 @@ def test_combined_error_pools_squared_errors_and_requires_matched_field():
         aggregate_errors(dict(config=cfg, rows=rows+[rows[0]]))
     with pytest.raises(ValueError, match="finite"):
         aggregate_errors(dict(config=cfg, rows=[dict(rows[0], error=float("nan"))]+rows[1:]))
+
+
+def test_acquisition_blend_normalizes_before_weighting():
+    from benchmark2d.strategies import normalized_blend
+    assert np.allclose(normalized_blend([10., 0.], [0., 2.], .5), [.5, .5])
+    assert np.allclose(normalized_blend([10., 0.], [0., 2.], .75), [.75, .25])
+    assert np.allclose(normalized_blend([0., 0.], [0., 0.], .5), 0)
+    with pytest.raises(ValueError):
+        normalized_blend([1.], [1.], 1.1)

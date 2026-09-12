@@ -7,7 +7,8 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 
-ARMS = ("grid", "moe", "sglib", "sgpp", "gpr-var", "gpr-grad", "triangles")
+ARMS = ("grid", "moe", "sglib", "sgpp", "gpr-var", "gpr-grad", "triangles",
+        "gpr-blend", "moe-tri75", "moe-tri50")
 
 
 def initialize(obs, seed):
@@ -24,7 +25,16 @@ def fit_gp(obs, seed):
     return gp, len(messages)
 
 
-def gpr(obs, seed, gradient=False):
+def normalized_blend(first, second, first_weight):
+    """Blend acquisition scores after independent max normalization."""
+    if not 0 <= first_weight <= 1:
+        raise ValueError("blend weight must be between zero and one")
+    a = np.asarray(first) / max(float(np.max(first)), 1e-12)
+    b = np.asarray(second) / max(float(np.max(second)), 1e-12)
+    return first_weight*a + (1-first_weight)*b
+
+
+def gpr(obs, seed, gradient=False, blend=False):
     initialize(obs, seed)
     rng = np.random.default_rng(seed)
     warning_count = 0
@@ -35,7 +45,7 @@ def gpr(obs, seed, gradient=False):
         nearest = cKDTree(obs.x).query(candidates)[0]
         _, sd = gp.predict(candidates, return_std=True)
         merit = sd.copy()
-        if gradient:
+        if gradient or blend:
             grad = np.zeros(len(candidates))
             for axis in range(2):
                 plus, minus = candidates.copy(), candidates.copy()
@@ -44,6 +54,8 @@ def gpr(obs, seed, gradient=False):
                 grad += ((gp.predict(plus)-gp.predict(minus))/(plus[:, axis]-minus[:, axis]))**2
             # A small exploration floor avoids a zero score on a flat GP mean.
             merit *= .1 + np.sqrt(grad)
+            if blend:
+                merit = normalized_blend(merit, sd, .5)
         merit[nearest < 1e-6] = -np.inf
         batch = []
         for _ in range(min(1, obs.remaining)):
@@ -52,7 +64,8 @@ def gpr(obs, seed, gradient=False):
             merit[np.linalg.norm(candidates-candidates[index], axis=1) < .06] = -np.inf
         obs(batch)
     gp, count = fit_gp(obs, seed)
-    return gp.predict, dict(fit_warnings=warning_count+count, kernel=str(gp.kernel_))
+    return gp.predict, dict(fit_warnings=warning_count+count, kernel=str(gp.kernel_),
+                            acquisition_weights={"gpr-grad": .5, "gpr-var": .5} if blend else None)
 
 
 def triangles(obs, seed):
@@ -96,11 +109,11 @@ def run_arm(name, obs, seed):
                 obs(candidates[distance.argmax()])
             level += 1
         return None, dict(nested=True, ordering="maximin within dyadic grid level")
-    if name == "moe":
+    if name in ("moe", "moe-tri75", "moe-tri50"):
         from .mixture import mixture
-        return mixture(obs, seed)
-    if name in ("gpr-var", "gpr-grad"):
-        return gpr(obs, seed, gradient=name == "gpr-grad")
+        return mixture(obs, seed, triangle_weight={"moe": 0., "moe-tri75": .25, "moe-tri50": .5}[name])
+    if name in ("gpr-var", "gpr-grad", "gpr-blend"):
+        return gpr(obs, seed, gradient=name == "gpr-grad", blend=name == "gpr-blend")
     if name == "triangles":
         return triangles(obs, seed)
     if name == "sglib":

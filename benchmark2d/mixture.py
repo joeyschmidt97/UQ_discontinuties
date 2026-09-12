@@ -6,7 +6,7 @@ Gates learn only errors predicted BEFORE the new observation is paid for.
 import numpy as np
 from scipy.interpolate import LinearNDInterpolator
 from scipy.spatial import Delaunay, cKDTree
-from .strategies import initialize, fit_gp
+from .strategies import initialize, fit_gp, normalized_blend
 
 EXPERTS = ("triangles", "grid", "gpr-var")
 
@@ -29,7 +29,9 @@ def gating(query, history_x, history_errors):
     return .9*inverse/inverse.sum(axis=1, keepdims=True)+.1/3
 
 
-def mixture(obs, seed):
+def mixture(obs, seed, triangle_weight=0.):
+    if not 0 <= triangle_weight <= 1:
+        raise ValueError("triangle weight must be between zero and one")
     initialize(obs, seed)
     rng = np.random.default_rng(seed)
     history_x, history_errors, gate_history = [], [], []
@@ -61,6 +63,21 @@ def mixture(obs, seed):
         merit = np.sum(gates*merits, axis=1)+.25*disagreement/max(disagreement.max(), 1e-12)
         if len(history_x) % 5 == 0:
             merit = distance
+        if triangle_weight:
+            # The actual triangle policy scores its centroid proposals only.
+            # Both policies use the same observations; no extra objective calls.
+            edges = vertices[:, 1:]-vertices[:, :1]
+            areas = np.abs(edges[:, 0, 0]*edges[:, 1, 1]-edges[:, 0, 1]*edges[:, 1, 0])/2
+            matrices = np.concatenate([vertices, np.ones((*vertices.shape[:2], 1))], axis=2)
+            gradients = np.linalg.solve(matrices, obs.y[tri.simplices][..., None])[..., 0][:, :2]
+            variation = np.zeros(len(vertices))
+            for i, neighbors in enumerate(tri.neighbors):
+                valid = neighbors[neighbors >= 0]
+                if len(valid):
+                    variation[i] = np.max(np.linalg.norm(gradients[valid]-gradients[i], axis=1))
+            triangle_merit = areas if len(history_x) % 5 == 0 else areas*(.05+np.sqrt(areas)*variation)
+            triangle_scores = np.concatenate([np.zeros(768), triangle_merit])
+            merit = normalized_blend(merit, triangle_scores, 1-triangle_weight)
         merit[distance < 1e-8] = -np.inf
         index = merit.argmax()
         point, before = candidates[index], predictions[index].copy()
@@ -73,5 +90,7 @@ def mixture(obs, seed):
         return np.sum(gating(query, history_x, history_errors)*experts(query), axis=1)
     return predict, dict(experts=list(EXPERTS), selection_source="previous pilot b4899ad; frozen shortlist",
                          shared_observations=True, gate_history=gate_history,
+                         acquisition_weights={"moe": 1-triangle_weight, "triangles": triangle_weight},
+                         blend_selection="weights frozen before new runs; components selected from 1da61c4 ranking",
                          prequential_locations=history_x, prequential_squared_errors=history_errors,
                          grid_expert="ridge fit of bilinear grid basis to shared paid observations")

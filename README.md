@@ -51,6 +51,31 @@ For built-in methods on Windows, install `requirements.txt` and explicitly selec
 `--arms grid moe gpr-var gpr-grad triangles`. Unavailable backends are reported;
 mocks never enter rankings.
 
+## Three additional mixtures
+
+Weights are fixed before running this extension, using the ranking in commit
+`1da61c4` to choose MoE and triangles as components. These are acquisition-score
+blends, not weighted predictions or extra independently paid runs:
+
+| Arm | Normalized acquisition mixture |
+|---|---|
+| `gpr-blend` | 50% GP gradient merit + 50% GP uncertainty |
+| `moe-tri75` | 75% original MoE acquisition + 25% triangle acquisition |
+| `moe-tri50` | 50% original MoE acquisition + 50% triangle acquisition |
+
+Each component score is divided by its candidate maximum before weighting.
+All components share the same paid observations. The triangle policy contributes
+scores at its centroid proposals; MoE also considers random candidates. Both
+retain their every-fifth-step exploration rule before blending. GP blends use
+one fitted GP and the same 1,024 candidates as the standalone GP policies.
+Native predictions use the GP or existing MoE predictor respectively; this test
+primarily ranks placement through the common low-poly reconstruction.
+
+These choices are follow-up hypotheses on the existing benchmark, not held-out
+confirmation or a guarantee of beating the components. No weights are retuned
+using the new results. Run only the new arms with the original case/seed/budget
+and scoring settings; retain original trajectory provenance when joining reports.
+
 ## Contenders
 
 | Arm | Placement rule |

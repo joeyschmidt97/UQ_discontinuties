@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 from .core import Surface, reconstruct
 
 COLORS = dict(grid="#758398", moe="#343a40", sglib="#b07813", sgpp="#9b59b6",
-              **{"gpr-var": "#007c91", "gpr-grad": "#dd5f42", "triangles": "#318448"})
+              **{"gpr-var": "#007c91", "gpr-grad": "#dd5f42", "triangles": "#318448", "gpr-blend": "#e7298a",
+                 "moe-tri75": "#3b4cc0", "moe-tri50": "#a51c30"})
 
 
 def curve(ax, rows, metric, color, label, expected_seeds=None, **kw):
@@ -90,7 +91,8 @@ def render(payload, out):
     ok = [r for r in rows if r["status"] == "ok"]
     epsilon, band_epsilon = cfg["epsilon"], cfg["band_epsilon"]
     names = {"grid": "Progressive grid", "moe": "Mixture of experts", "sglib": "Ionut / sg_lib",
-             "sgpp": "SG++", "gpr-var": "GP uncertainty", "gpr-grad": "GP gradient", "triangles": "Triangles"}
+             "sgpp": "SG++", "gpr-var": "GP uncertainty", "gpr-grad": "GP gradient", "triangles": "Triangles", "gpr-blend": "GP grad/unc 50/50",
+             "moe-tri75": "MoE/tri 75/25", "moe-tri50": "MoE/tri 50/50"}
     a, b = np.meshgrid(np.linspace(0, 1, 101), np.linspace(0, 1, 101))
     query = np.column_stack([a.ravel(), b.ravel()])
     surfaces = {case: Surface(case, seed) for case in cases}
@@ -172,7 +174,7 @@ def render(payload, out):
             ax.grid(alpha=.20, which="both")
             ax.spines[["top", "right"]].set_visible(False)
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=min(7, len(arms)), frameon=False, fontsize=10)
+    fig.legend(handles, labels, loc="lower center", ncol=min(5, len(arms)), frameon=False, fontsize=10)
     fig.suptitle(f"03  Error versus points | all {len(cfg['seeds'])} paired seeds | targets: global {epsilon:g}, boundary {band_epsilon:g}", fontsize=17)
     fig.tight_layout(rect=(0, .065, 1, .94))
     save_figure(fig, "03-error-versus-points.png", "3. Judge accuracy per evaluation",
