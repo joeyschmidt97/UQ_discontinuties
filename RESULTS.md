@@ -1,90 +1,114 @@
-# Initial 2-D benchmark results
+# Equal-point 2-D benchmark results
 
-**Triangle refinement is the strongest overall finalist in this pilot.** It is
-the only arm that reaches the global and boundary targets on all three seeds of
-all five cases within the tested budgets. This is synthetic evidence for a next
-experiment, not a production GENE winner.
+**The mixture of experts gives the lowest median final reconstruction error on
+all four surfaces at exactly 256 paid points.** It also wins the common-RBF
+cross-check on all four. It does not reach every error target with the fewest
+points: triangles win the smooth case and the progressive grid wins the
+three-plane case at the declared targets.
 
-[Open the consolidated report](reports/pilot/index.html) or [the plot-reading guide](reports/pilot/README.md).
-Five sheets put all methods and cases together: 3-D truth, final-cap point placement,
-error-versus-cost curves, residual maps and a scorecard. Curves retain all four
-budgets; placement/maps show seed 0 at the largest cap. Actual point counts are shown.
+Start with the [plot guide](reports/pilot/README.md) or [single-page report](reports/pilot/index.html).
+The five sheets show 3-D truth, point placement, log-log error curves, residual
+maps and qualifying costs. Every method is compared at the same integer N.
 
-## Cost to reach the targets
+## Cost to reach the declared targets
 
-Targets were fixed before running: global normalized RMS <= 0.05 and
-boundary-band normalized RMS <= 0.10. Both must remain satisfied at later tested
-checkpoints. Normalization uses one fixed truth range per case/geometry for all
-methods and regions. The cost below is the median of measured qualifying costs
-over three seeds; all three must qualify to enter the comparison.
+Global normalized RMS <= 0.05 and fold-band normalized RMS <= 0.10 must both
+hold at every subsequent integer point count through N = 256. All three seeds
+must qualify. Costs below are medians of measured crossings, with no interpolation.
 
-| Case | Lowest median qualifying cost | Method |
-|---|---:|---|
-| Smooth control | 20 | Scrambled Sobol |
-| Kink without peaks | 25 | Regular grid |
-| Peaks on the crossing plane | 121 | Regular grid |
-| Peaks offset from the plane | 64 | Regular grid and triangle refinement tie |
-| Genuine jump plus peaks | 256 | Triangle refinement only |
+| Surface | Lowest median cost | Method | Per-seed costs |
+|---|---:|---|---|
+| Smooth, one peak | 21 | Triangles | [21, 21, 26] |
+| Two planes, four peaks | 79 | Mixture of experts | [85, 79, 71] |
+| Three planes, three peaks | 71 | Progressive grid | [67, 127, 71] |
+| Two planes, asymmetric three peaks | 63 | Mixture of experts | [73, 59, 63] |
 
-On offset peaks, the grid needs [64, 121, 64] evaluations across the three seeds;
-triangle refinement needs [64, 64, 64]. On the jump case, the grid and GPR
-uncertainty arm each pass on only two seeds; every other arm except triangles
-passes on none. A good median global error therefore does not suffice to qualify.
+## Accuracy at exactly 256 points
 
-## Accuracy at the largest requested budget
+Median global RMS divided by a fixed truth range, using the same independent
+16,384-point integration set and common low-poly reconstructor for every method.
+Lower is better. Each column aggregates the same three paired seeds.
 
-Triangle refinement's median common-linear global / boundary errors:
+| Method | Smooth | Two planes / four peaks | Three planes / three peaks | Asymmetric |
+|---|---:|---:|---:|---:|
+| Progressive grid | 0.00927 | 0.02169 | 0.01972 | 0.01945 |
+| Mixture of experts | 0.00309 | 0.01108 | 0.00923 | 0.00886 |
+| Ionut / sg_lib | 0.03586 | 0.03887 | 0.04423 | 0.04237 |
+| SG++ | 0.00714 | 0.03880 | 0.03733 | 0.03200 |
+| GP uncertainty | 0.00937 | 0.02288 | 0.02110 | 0.02271 |
+| GP gradient | 0.00621 | 0.02566 | 0.02010 | 0.02130 |
+| Triangles | 0.00480 | 0.01550 | 0.01460 | 0.01289 |
 
-| Case | Global error | Boundary error |
+## Placement and prediction are different tests
+
+The primary question is which strategy buys the most useful points. On this
+criterion the mixture is the strongest final-budget design, supported by the
+independent common-RBF reconstruction cross-check.
+
+Its **blended predictor does not beat the standalone uncertainty GP predictor**
+on these cases. The optional native diagnostic uses the same first 1,024 held-out
+points for both predictors at N = 256; it does not enter the placement ranking.
+
+| Surface | Mixture native RMS | Uncertainty GP native RMS |
 |---|---:|---:|
-| Smooth | 0.0030 | 0.0038 |
-| Kink | 0.0033 | 0.0090 |
-| On-plane peaks | 0.0095 | 0.0213 |
-| Offset peaks | 0.0094 | 0.0101 |
-| Jump | 0.0293 | 0.0788 |
+| Smooth, one peak | 0.00358 | 0.00043 |
+| Two planes, four peaks | 0.01609 | 0.00788 |
+| Three planes, three peaks | 0.01355 | 0.00550 |
+| Two planes, asymmetric three peaks | 0.01325 | 0.00626 |
 
-The ranking is not solely a consequence of scoring with triangles: at the largest
-requested cap, triangle refinement also has the lowest median common-RBF error
-on the kink, on-plane peaks, offset peaks and jump cases. These are final-cap
-comparisons, not equal-actual-cost claims: Sobol and some sparse-grid arms underspend.
+The mixture's experts are triangles, a fitted bilinear grid basis and a GP. They
+share one paid sample set. Gates learn only prequential errors; the previous
+pilot's shortlist was frozen before looking at these new test results. These
+are not three independent 256-point runs hidden behind a 256-point label.
 
-## What was run and checked
+## What changed and what was verified
 
-- **420 experiments:** 7 real strategies x 5 cases x 3 paired seeds/geometries x
-  4 budgets. All completed; no unavailable or failed rows. Every row respects its
-  evaluation cap, has unique case/seed/budget/arm identity and stores all samples.
-- The independent scoring design has 16,384 points. Exact truth is never passed
-  to acquisition. Four common corners are charged to every strategy.
-- Real SG++ 3.3.1 on Linux/Python 3.11.16 with NumPy 1.26.4. The adapter's native
-  matrix lifetime, grid rollback and repair-grid bugs were fixed and tested.
-- `sg_lib` external revision: `d13bc4661cbd3901a70190b52c477e7606576fa3`.
-- **25 passing regression tests:** 11 benchmark contracts, 6 mock SG++ controls,
-  6 compiled SG++ checks, and 2 existing sg_lib budget/prediction regressions.
-- Primary package versions, experiment source hash and starting Git revision are
-  recorded in `reports/pilot/results.json`. The renderer hash is recorded separately
-  in `reports/pilot/render-manifest.json`, since plot layout was refined after the run.
-- Native surrogate prediction is optional and was disabled for this matrix; it is
-  expensive for sg_lib. Common linear and common RBF scores are present for every row.
+- Four continuous test surfaces with 1, 4, 3 and 3 interior peaks. Peak centers
+  are more than 0.15 normalized units from folds. On-fold peaks and jumps are
+  removed. Three seeds rotate the geometry.
+- Sobol acquisition is removed. The fixed Sobol integration set remains an
+  evaluator-only numerical integration tool.
+- **84 trajectories and 21,252 pointwise scores:** seven methods, four surfaces,
+  three paired seeds; every N from 4 through 256. All trajectories spend exactly
+  256 unique evaluations, including the four shared corners. No failed or
+  unavailable trajectories enter the final report.
+- Sparse-grid prefixes can finish inside a prescribed batch. Their common
+  reconstruction is scoreable at every N; native sparse-grid prediction is
+  omitted when the native grid update is incomplete.
+- sg_lib fixed-budget mode caps individual axes at level 20 and continues other
+  admissible subspaces. This is an explicitly documented fixed-budget variant of
+  the native convergence-stopped runner. Its normal convergence mode remains
+  the adapter default. Deterministic node caching never shares observations.
+- Audited all trajectory identities, budgets, coordinate uniqueness and saved
+  truth values. Independently recomputed 504 prefix errors from stored samples.
+  Real compiled SG++ and external sg_lib were used, never mocks for ranking.
+- 39 regression tests passed: core/sampling/report contracts, compiled sparse-grid
+  checks including fixed-budget continuation and cache equivalence, and separate
+  SG++ mock controls.
+- Exact execution source archives and hashes are saved with the results. Six
+  unchanged methods retain their original run data; all twelve sg_lib sequences
+  were rerun after correcting continuation. Rendering has separate provenance.
+  sg_lib checkout: `d13bc4661cbd3901a70190b52c477e7606576fa3`.
 
-## Interpretation and next experiment
+## Next experiment
 
-Keep **triangle refinement, GPR uncertainty, and the regular/Sobol controls** as
-the immediate shortlist. SG++ remains useful as a local-basis comparator. Test
-held-out orientations, narrower spikes and different jump sizes before promoting
-any method to the four campaign axes. Three seeds are pilot-scale evidence, not
-a statistical proof of general superiority.
+This ranks sample efficiency. Saved timings include acquisition and scoring,
+with different cache warm-up and parallel execution conditions; they are not a
+controlled wall-clock benchmark. The level-20 sg_lib configuration has at most
+400 native 2-D nodes; larger budgets require a higher per-axis limit.
 
-The triangle policy is a simple observed-gradient disagreement heuristic with
-periodic area-based exploration. It can still miss a peak between samples, and
-its mesh costs in higher dimensions are untested. The score also deliberately
-uses a continuous piecewise-linear reconstruction even across true jumps.
+Confirm the mixture, triangle and progressive-grid designs on held-out rotations,
+peak locations and widths. Compare GP/RBF reconstruction on those designs before
+choosing the predictor. Then add failed runs, retries, inner-spectrum stopping
+and real node-hour accounting for a small GENE pilot. Three synthetic seeds do
+not establish a universal or production runner.
 
-Future GENE selection must include spectrum resolution, failed/retried evaluations,
-convergence checks and actual node-hours. Those costs are outside this clean 2-D pilot.
-
-Reproduce the matrix in the Linux environment described in README:
+Reproduce with the Linux environment in the root README:
 
 ```bash
-python -m benchmark2d --cases smooth kink on-plane offset-peaks jump \
-  --seeds 0 1 2 --budgets 32 64 128 256 --output outputs/reproduction
+python -m benchmark2d --seeds 0 1 2 --budgets 32 64 128 256 \
+  --native-test-size 1024 --test-size 16384 --output outputs/reproduction
 ```
+
+The superseded pilot and its unequal-count comparisons remain in Git history at
+`b4899ad`. These new results replace its rankings.
