@@ -129,7 +129,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", type=pathlib.Path, required=True)
     parser.add_argument("--dims", type=int, nargs="+", default=[5, 8])
-    parser.add_argument("--output", type=pathlib.Path, required=True)
+    parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("results"),
+                        help="root holding one <dim>d directory per study")
     parser.add_argument("--allow-partial", action="store_true")
     args = parser.parse_args()
     payloads = load_workers(args.run)
@@ -147,11 +148,13 @@ def main():
         payload["final_errors"] = table
         payload["combined"] = combined
         payload["curves"] = curves(payload)
-        path = args.output/f"results-{dim}d.json"
+        # One directory per dimension, laid out exactly like results/2d.
+        destination = args.output/f"{dim}d"
+        figures = destination/"figures"
+        figures.mkdir(parents=True, exist_ok=True)
+        path = destination/"results.json"
         path.write_text(json.dumps(payload, indent=2, allow_nan=False), encoding="utf-8")
-        figures = args.output/"figures"
-        figures.mkdir(exist_ok=True)
-        render_curves(payload, figures/f"performance-{dim}d.png")
+        render_curves(payload, figures/"performance.png")
         budget = payload["config"]["budgets"][str(dim)] if isinstance(payload["config"]["budgets"], dict) else None
         print(f"\nd={dim}  budget {budget}  {len(payload['rows'])} rows  "
               f"{'complete' if not missing else str(len(missing))+' missing'}  -> {path}")

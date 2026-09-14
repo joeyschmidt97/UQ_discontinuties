@@ -6,6 +6,8 @@ share one layout: what the generator declared, what the realized surface
 actually responds to, and how much resolution each strategy spent per axis.
 A 3-D render has no counterpart above two dimensions; this does.
 """
+import pathlib
+
 import numpy as np
 from scipy.spatial import cKDTree
 from .cases import CASES, strengths
@@ -102,3 +104,37 @@ def render_table(surface, table, labels, path, title=None):
 def case_summary():
     return {case: dict(dim=spec["dim"], modes=len(spec["modes"]), peaks=spec["peaks"],
                        fold=spec["fold"], patterns=spec["modes"]) for case, spec in CASES.items()}
+
+
+def main():
+    """Render one strength table per case into results/<dim>d/figures."""
+    import argparse
+    from scipy.stats import qmc
+    from .core import SurfaceND, evaluation_set
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--cases", nargs="+", choices=list(CASES), default=list(CASES))
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--test-size", type=int, default=16384)
+    parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("results"))
+    args = parser.parse_args()
+    for case in args.cases:
+        surface = SurfaceND(case, args.seed)
+        test = evaluation_set(surface, args.test_size)
+        n = 512 if surface.dim == 5 else 1024
+        strength = measured_strength(surface, test["x"][:4096])
+        active = [j for j in range(surface.dim) if strength[j] > .1]
+        sobol = qmc.Sobol(surface.dim, scramble=True, seed=4242).random(n)
+        oracle = np.random.default_rng(2).random((n, surface.dim))
+        oracle[:, active] = qmc.Sobol(len(active), scramble=True, seed=99).random(n)
+        table, labels = case_table(surface, test, {"space-filling": sobol, "active-subspace oracle": oracle})
+        figures = args.output/f"{surface.dim}d"/"figures"
+        figures.mkdir(parents=True, exist_ok=True)
+        path = figures/f"strength-{case.split('-', 1)[1]}.png"
+        render_table(surface, table, labels, path,
+                     title=f"{case}  |  seed {args.seed}  |  declared vs measured axis strength, "
+                           f"and design profiles at N={n}")
+        print(path)
+
+
+if __name__ == "__main__":
+    main()

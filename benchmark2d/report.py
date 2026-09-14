@@ -351,7 +351,7 @@ production GENE runner. See [the detailed results](../../RESULTS.md).
 From the repository root, using the configured Python environment:
 
 ```bash
-python -m benchmark2d --plots-only --output reports/pilot
+python -m benchmark2d --plots-only --output results/2d
 ```
 
 All coordinates, sample values, costs, per-seed errors, peak-region metrics and

@@ -6,7 +6,7 @@ cross-check on all four. It does not reach every error target with the fewest
 points: triangles win the smooth case and the progressive grid wins the
 three-plane case at the declared targets.
 
-Start with the [plot guide](reports/pilot/README.md) or [single-page report](reports/pilot/index.html).
+Start with the [plot guide](results/2d/README.md) or [single-page report](results/2d/index.html).
 The five sheets show 3-D truth, point placement, log-log error curves, residual
 maps and the combined performance curve; qualifying costs remain in the HTML table. Every method is compared at the same integer N.
 
@@ -39,7 +39,7 @@ MoE reduces the final combined error by about 30% relative to triangles. It does
 not win at every budget: triangles are slightly better at N = 32. The combined
 0.05 reference is not a guarantee that every individual case qualifies. Use the
 per-case curves and qualification table for that question. Machine-readable
-curves are in [aggregate-scores.json](reports/pilot/aggregate-scores.json).
+curves are in [aggregate-scores.json](results/2d/aggregate-scores.json).
 
 ## Cost to reach the declared targets
 
@@ -102,7 +102,7 @@ it to 6e-17 in every one of its 3,036 rows, so the sweep is anchored to an
 already-published trajectory. Only the best three appear in the figures; the
 selection reads the benchmark it is plotted on, so it is a display choice rather
 than held-out confirmation. The full five-arm ranking is stored under
-`selection` in [results.json](reports/pilot/results.json).
+`selection` in [results.json](results/2d/results.json).
 
 ## Placement and prediction are different tests
 

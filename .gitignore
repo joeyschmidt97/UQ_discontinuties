@@ -3,6 +3,6 @@ __pycache__/
 *.pyc
 .venv/
 
-# figures/ is tracked on purpose: a fresh clone must be able to SEE the
-# results without first spending ~20 min regenerating them.
-!figures/
+# results/ is tracked on purpose: a fresh clone must be able to SEE the
+# outcome without first spending hours regenerating it.
+!results/
