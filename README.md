@@ -299,3 +299,7 @@ The saved pilot records both execution source hashes for reused trajectories and
 rerun sg_lib trajectories. Exact source archives accompany the results; renderer
 provenance is recorded separately. No new observations were generated when
 merging the independently executed methods into the final comparison.
+
+## Shared data and GP experiments
+
+See [data/README.md](data/README.md) for frozen 2D/5D/8D datasets, generators in scripts/, and isolated uncertainty/UCB comparisons with configurable Matern nu (including 0.5). Existing benchmark commands and saved results retain their original protocol.

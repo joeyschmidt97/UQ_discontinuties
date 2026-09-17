@@ -6,3 +6,7 @@ __pycache__/
 # results/ is tracked on purpose: a fresh clone must be able to SEE the
 # outcome without first spending hours regenerating it.
 !results/
+
+# Reproducible generated dataset arrays and manifests
+data/**/*.npz
+data/**/manifest.json
