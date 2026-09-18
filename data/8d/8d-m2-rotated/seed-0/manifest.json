@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "family": "existing-affine-envelope-gaussian-peaks",
+  "dimension": 8,
+  "case": "8d-m2-rotated",
+  "surface_seed": 0,
+  "bounds": [
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ]
+  ],
+  "measure": "uniform unit box",
+  "pool_size": 4096,
+  "test_size": 65536,
+  "pool_seed": 1729,
+  "test_seed": 91479,
+  "scale": 1.0534295679075796,
+  "created_utc": "2026-09-17T23:52:32.665448+00:00",
+  "git_commit": "69ad443fc41fc5e10763c605732c52b11f0467c3",
+  "numpy": "1.26.4",
+  "scipy": "1.17.1",
+  "source_sha256": {
+    "benchmarknd/core.py": "1fd2653dced1ea60111199898ea6c5e601351633f39c472e585a84e1c5d532e9",
+    "benchmarknd/cases.py": "d9aa470b10541e36753beb6cafef8bc962a80f56ce247f9ac9ccc32a3c55bd9d",
+    "scripts/generate_data.py": "1c50115bfef2a2291f398c8f01564c369bec6e5a7c766c3876cb3e56ab9e297a",
+    "scripts/datasets.py": "72d106d336bb5d059a3294e21a4538987acac65f4e21af2c7f5aa004bb057d43"
+  },
+  "sha256": {
+    "evaluation.npz": "c07c1781417b1d254cb37e5ce5d6ff08156c52f838529e480271ae3f54a488dc",
+    "pool.npz": "063a7b99660cb812d8f14555e1636a95aceea84dd3fc6ac5b3466866aad25bfa"
+  },
+  "note": "Synthetic continuous functions with possible kinks, not jump-discontinuous plasma truth. Evaluation labels are scorer-only."
+}

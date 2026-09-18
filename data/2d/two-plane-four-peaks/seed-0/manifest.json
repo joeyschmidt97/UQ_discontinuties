@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "family": "existing-affine-envelope-gaussian-peaks",
+  "dimension": 2,
+  "case": "two-plane-four-peaks",
+  "surface_seed": 0,
+  "bounds": [
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ]
+  ],
+  "measure": "uniform unit box",
+  "pool_size": 4096,
+  "test_size": 65536,
+  "pool_seed": 1729,
+  "test_seed": 91479,
+  "scale": 1.1069272249201538,
+  "created_utc": "2026-09-17T23:52:28.710011+00:00",
+  "git_commit": "69ad443fc41fc5e10763c605732c52b11f0467c3",
+  "numpy": "1.26.4",
+  "scipy": "1.17.1",
+  "source_sha256": {
+    "benchmark2d/core.py": "1b65d6c1ee903f577fc6d05af7fa16e7e3f5ef54dbc6026fe1d73d9835bb8fab",
+    "scripts/generate_data.py": "1c50115bfef2a2291f398c8f01564c369bec6e5a7c766c3876cb3e56ab9e297a",
+    "scripts/datasets.py": "72d106d336bb5d059a3294e21a4538987acac65f4e21af2c7f5aa004bb057d43"
+  },
+  "sha256": {
+    "evaluation.npz": "de6026253b2b3cbe484f8299885d7118c3d9fb251ea1dc5afab146eea9833336",
+    "pool.npz": "a7a4fe2541b8716dfb034fc55adbacda2bb2d805d844ac1d6988bbc84958115d"
+  },
+  "note": "Synthetic continuous functions with possible kinks, not jump-discontinuous plasma truth. Evaluation labels are scorer-only."
+}

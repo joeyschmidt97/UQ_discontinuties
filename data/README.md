@@ -30,7 +30,7 @@ Defaults generate all twelve existing cases (four each in 2D/5D/8D), surface
 seed 0, a 4,096-point scrambled Sobol pool and a separate 65,536-point test set.
 Seeds, unit-box measure, truth range, source hashes, versions and file checksums
 are recorded in each manifest. Existing datasets are never overwritten.
-Generated numerical files are ignored by Git; regenerate using the command above.
+Generated arrays and manifests are tracked in Git so a fresh clone includes the datasets. Use a new output directory when generating variants; existing datasets are never overwritten.
 
 `pool.npz` contains `x` (N,d) and `y` (N,). `evaluation.npz` contains independent
 `x`, `y`, and diagnostic `band`, `peak`, `region` arrays. Evaluation labels and
