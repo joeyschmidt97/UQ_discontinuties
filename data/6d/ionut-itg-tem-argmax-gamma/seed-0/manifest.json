@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "family": "ionut-phenomenological-microinstability",
+  "dimension": 6,
+  "case": "ionut-itg-tem-argmax-gamma",
+  "surface_seed": 0,
+  "bounds": [
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ]
+  ],
+  "measure": "uniform unit box",
+  "pool_size": 4096,
+  "test_size": 65536,
+  "pool_seed": 1729,
+  "test_seed": 91479,
+  "scale": 0.501924878825797,
+  "numpy": "1.26.4",
+  "scipy": "1.17.1",
+  "created_utc": "2026-09-18T02:19:47.191857+00:00",
+  "upstream_commit": "13f87b95f90be9dbb5942e317739bb15a1918e0e",
+  "upstream_repository": "https://github.com/ionutfarcas/UQ_discontinuties",
+  "source_sha256": {
+    "scripts/ionut_proxies.py": "17ae68e7f801f9ba8b846e58078551ab05706ab4cb7437b4feb7eef85ccdd2ce",
+    "scripts/generate_ionut_data.py": "e0bf6b6924a8267c90e04e1789aa17406cccc80e33052fa68f0b36de0477bf4e",
+    "scripts/datasets.py": "f1f7d59ee6e99f6c94b948d276c451c12e6157f7eeff49e0fe491c589eba3a7d",
+    "scripts/generate_data.py": "1c50115bfef2a2291f398c8f01564c369bec6e5a7c766c3876cb3e56ab9e297a"
+  },
+  "diagnostics": {
+    "band": "undefined; empty mask",
+    "peak": "undefined; empty mask"
+  },
+  "note": "Phenomenological proxy, not gyrokinetic truth; native dimension retained.",
+  "columns": [
+    "RLTi",
+    "RLTe",
+    "RLn",
+    "nu",
+    "beta",
+    "ky_scale"
+  ],
+  "physical_ranges": {
+    "RLTi": [
+      3.0,
+      9.0
+    ],
+    "RLTe": [
+      2.0,
+      8.0
+    ],
+    "RLn": [
+      0.5,
+      3.5
+    ],
+    "nu": [
+      0.0,
+      0.8
+    ],
+    "beta": [
+      0.0,
+      1.5
+    ]
+  },
+  "ky_mapping": "0.30*(0.5+x5)",
+  "branches": [
+    "ITG",
+    "TEM"
+  ],
+  "mode": "argmax",
+  "output": "gamma",
+  "T": 0.05,
+  "baseline": {
+    "RLTi": 6.0,
+    "RLTe": 5.0,
+    "RLn": 2.0,
+    "beta": 0.0,
+    "nu": 0.0,
+    "eps": 0.18,
+    "tau": 1.0,
+    "RLTi_crit": 4.0,
+    "TEM_crit": 3.0,
+    "beta_crit": 0.9,
+    "beta_ITG_stab": 1.3,
+    "a_Te": 1.0,
+    "a_n": 0.6,
+    "nu_c": 0.3,
+    "C_ITG": 0.6,
+    "C_TEM": 1.2,
+    "C_KBM": 0.5,
+    "C_wi": 0.25,
+    "C_we": 0.3,
+    "C_wp": 0.2
+  },
+  "upstream_file": "sgpp_examples/itg_transition_sg.py",
+  "sha256": {
+    "evaluation.npz": "26e638f2f35597108bc6b9947bbc792f9e6e5e7b71cef71dce8ac9afca5f0375",
+    "pool.npz": "3b3ee10278dab41437879acad460092f105c12bad0c5417020548212dec5f878"
+  }
+}

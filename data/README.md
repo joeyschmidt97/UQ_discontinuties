@@ -1,78 +1,70 @@
-# Shared synthetic datasets
+# Datasets and generators
 
-Data inputs live here; experiment outputs remain under `outputs/` or `results/`.
+This directory contains versioned data arrays, manifests and data documentation.
 
-```
-data/
-  2d/<case>/seed-<seed>/
-  5d/<case>/seed-<seed>/
-  8d/<case>/seed-<seed>/
-    manifest.json
-    pool.npz
-    evaluation.npz
-scripts/
-  generate_data.py
-  datasets.py
-  run_gp_experiment.py
-```
+- `2d/`, `5d/`, `8d/`: existing affine-envelope/Gaussian-peak synthetic cases.
+- `6d/`: Ionut Farcas's phenomenological microinstability proxies at their native dimension.
+- Each case contains `seed-0/pool.npz`, `evaluation.npz`, and `manifest.json`.
+- All generated arrays and manifests are tracked in Git. Generators refuse overwrites.
 
-Run from the repository root using its Python environment:
+## Existing synthetic data
 
 ```sh
 python -m scripts.generate_data
-# A separate version with multiple surface seeds:
 python -m scripts.generate_data --seeds 0 1 2 --output data/v2
-# Generate just one case:
-python -m scripts.generate_data --dims 2 --cases smooth --output data/pilot
 ```
 
-Defaults generate all twelve existing cases (four each in 2D/5D/8D), surface
-seed 0, a 4,096-point scrambled Sobol pool and a separate 65,536-point test set.
-Seeds, unit-box measure, truth range, source hashes, versions and file checksums
-are recorded in each manifest. Existing datasets are never overwritten.
-Generated arrays and manifests are tracked in Git so a fresh clone includes the datasets. Use a new output directory when generating variants; existing datasets are never overwritten.
+The twelve existing cases have 4,096 pool points and 65,536 independent
+reference points each. They are continuous, with possible affine-envelope kinks.
 
-`pool.npz` contains `x` (N,d) and `y` (N,). `evaluation.npz` contains independent
-`x`, `y`, and diagnostic `band`, `peak`, `region` arrays. Evaluation labels and
-masks are scorer-only. Pool labels are revealed only when their index is acquired.
-Initial acquisitions count toward the budget. Smooth cases have no fold band.
-These surfaces are continuous with possible kinks, not true jump-discontinuous
-plasma data. No new physics model is claimed.
+## Ionut's microinstability proxies
+
+Source: https://github.com/ionutfarcas/UQ_discontinuties/tree/13f87b95f90be9dbb5942e317739bb15a1918e0e
+
+Pure numerical definitions are extracted into `scripts/ionut_proxies.py` from
+`sgpp_examples/itg_transition_sg.py` and `sgpp_examples/itg_kbm_surrogate.py`.
+SG++ and plotting code are not required to generate their values. These are
+phenomenological formulas, not fitted experimental data or gyrokinetic solves.
+
+```sh
+python -m scripts.generate_ionut_data
+```
+
+Nine scalar datasets: ITG/TEM and ITG/KBM, each with argmax/softmax selection
+and gamma/omega outputs, plus the separate stellarator-style ITG/KBM blend.
+The first eight use normalized columns `[RLTi, RLTe, RLn, nu, beta, ky_scale]`,
+mapped to `[3,9]`, `[2,8]`, `[0.5,3.5]`, `[0,0.8]`, `[0,1.5]`, and
+`ky=0.30*(0.5+x5)` respectively. Softmax width is T=0.05.
+The separate blend uses unit-box `[nref,Tref,aLTi,aLTe,aLn,tau]`.
+Default parameters and fixed baseline quantities remain exactly as upstream.
+
+Hard selection chooses the largest branch growth rate: gamma can have kinks
+and the selected omega can jump. Softmax smooths the selection, but clipped
+square-root branch onsets remain nonsmooth. The blend is a separate smooth
+phenomenological target. These proxies contain ITG/TEM/KBM, not ETG or MTM.
+No 2D/5D slices or 8D extensions are silently substituted for native 6D data.
+The formulas do not use a random surface seed; seed-0 is a common layout label.
+
+## Array and provenance format
+
+`x` has shape (N,d), `y` shape (N,). The independent reference archive also
+contains `band`, `peak`, and `region`. Existing synthetic cases have defined
+peak and fold masks. For the Ionut cases these masks are false because no
+geometric band/peak region is defined; do not interpret empty masks as zero error.
+Branch cases additionally store `gamma`, `omega`, `G`, `W`, and `share` in both
+archives; G and W have shape (N,2). `region` identifies the largest-growth branch,
+including for softmax data; it is not a stable/unstable classification. Ties
+follow NumPy's first-branch argmax convention. Branch names are in the manifest.
+
+Manifests include seeds, bounds, probability measure, response range, file
+checksums, source hashes and provenance. The frozen values are authoritative;
+recreating values requires the matching generator version and parameters.
 
 ```python
 from scripts.datasets import load_dataset, surface_for
-manifest, pool, test = load_dataset("data/5d/5d-m2-rotated/seed-0")
-# For continuous-space methods, including sparse grids:
-oracle = surface_for(manifest["dimension"], manifest["case"], manifest["surface_seed"])
-# Wrap oracle in the benchmark's metered Observations before acquisition.
+manifest, pool, reference = load_dataset('data/6d/ionut-itg-tem-argmax-omega/seed-0')
+f = surface_for(manifest['dimension'], manifest['case'], manifest['surface_seed'])
 ```
 
-Frozen arrays remain usable after code changes. Recreating a continuous oracle
-requires matching the source hashes in the manifest; do not silently mix changed
-truth code with an older test set. Legacy benchmark CLIs remain unchanged and
-retain their original reconstruction/scoring protocol.
-
-## GP comparisons
-
-```sh
-python -m scripts.run_gp_experiment --dataset data/2d/smooth/seed-0 --policy uncertainty --nu 0.5 --budget 64 --output outputs/gp/smooth-uncertainty-nu05.json
-python -m scripts.run_gp_experiment --dataset data/2d/smooth/seed-0 --policy ucb --beta 2 --nu 0.5 --budget 64 --output outputs/gp/smooth-ucb-nu05.json
-# Repeat with --nu 1.5 and 2.5, keeping dataset, seed and budget identical.
-```
-
-Uncertainty acquisition maximizes posterior standard deviation. UCB maximizes
-`mean + beta * std`, explicitly favoring high response as well as uncertainty.
-This is a proposed exploration/exploitation baseline, not integrated-error
-minimization. Both share an initial random pool subset of 2*d+1 points. The
-runner scores the native GP on the frozen test set at checkpoints; these scores
-must not be merged with the legacy Delaunay/RBF leaderboard. Test data never
-participate in acquisition. This runner intentionally does not rerun the older
-sparse-grid, mixture or gradient policies.
-
-Matern nu=0.5 is a rough continuous kernel, not a jump model. Comparing it on
-these kinked cases is a first test; actual discontinuity families can be added
-as separately named generators with their own manifests.
-
-For an additional family, add a dedicated generator in `scripts/` and retain
-this array/manifest contract. Give new families separate directories or a new
-output root. Keep empirical datasets labeled by source and fidelity.
+To add a new family, use a dedicated data generator in `scripts/`, document its
+coordinate mapping and physical fidelity, and preserve the array/manifest contract.

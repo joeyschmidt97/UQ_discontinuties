@@ -6,6 +6,11 @@ import numpy as np
 
 
 def surface_for(dim, case, seed):
+    if dim == 6:
+        from scripts.generate_ionut_data import CASES, values
+        if case not in CASES or seed != 0:
+            raise ValueError('Ionut proxies require a known case and surface seed 0')
+        return lambda x: values(case, x)['y']
     if dim == 2:
         from benchmark2d.core import Surface
         return Surface(case, seed)

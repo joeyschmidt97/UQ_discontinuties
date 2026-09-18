@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "family": "ionut-phenomenological-microinstability",
+  "dimension": 6,
+  "case": "ionut-stellarator-itg-kbm",
+  "surface_seed": 0,
+  "bounds": [
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ]
+  ],
+  "measure": "uniform unit box",
+  "pool_size": 4096,
+  "test_size": 65536,
+  "pool_seed": 1729,
+  "test_seed": 91479,
+  "scale": 1.9344653044401303,
+  "numpy": "1.26.4",
+  "scipy": "1.17.1",
+  "created_utc": "2026-09-18T02:19:50.916401+00:00",
+  "upstream_commit": "13f87b95f90be9dbb5942e317739bb15a1918e0e",
+  "upstream_repository": "https://github.com/ionutfarcas/UQ_discontinuties",
+  "source_sha256": {
+    "scripts/ionut_proxies.py": "17ae68e7f801f9ba8b846e58078551ab05706ab4cb7437b4feb7eef85ccdd2ce",
+    "scripts/generate_ionut_data.py": "e0bf6b6924a8267c90e04e1789aa17406cccc80e33052fa68f0b36de0477bf4e",
+    "scripts/datasets.py": "f1f7d59ee6e99f6c94b948d276c451c12e6157f7eeff49e0fe491c589eba3a7d",
+    "scripts/generate_data.py": "1c50115bfef2a2291f398c8f01564c369bec6e5a7c766c3876cb3e56ab9e297a"
+  },
+  "diagnostics": {
+    "band": "undefined; empty mask",
+    "peak": "undefined; empty mask"
+  },
+  "note": "Phenomenological proxy, not gyrokinetic truth; native dimension retained.",
+  "columns": [
+    "nref",
+    "Tref",
+    "aLTi",
+    "aLTe",
+    "aLn",
+    "tau"
+  ],
+  "parameters": {
+    "beta_c": 0.32,
+    "delta_beta": 0.04,
+    "eps": 0.025,
+    "alpha_n": 0.5,
+    "alpha_tau": 0.3,
+    "grad_shift": 0.05
+  },
+  "upstream_file": "sgpp_examples/itg_kbm_surrogate.py",
+  "sha256": {
+    "evaluation.npz": "6c4c828a773a6e130531c791cda149218bdf89edc9b0b5d059e76114b08b9c53",
+    "pool.npz": "de8eae83808c222bb7bf5f41f262850eefcedb9afa66868d1a4fff13ef71e571"
+  }
+}

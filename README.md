@@ -302,4 +302,4 @@ merging the independently executed methods into the final comparison.
 
 ## Shared data and GP experiments
 
-See [data/README.md](data/README.md) for frozen 2D/5D/8D datasets, generators in scripts/, and isolated uncertainty/UCB comparisons with configurable Matern nu (including 0.5). Existing benchmark commands and saved results retain their original protocol.
+See [data/README.md](data/README.md) for frozen datasets and generators, including native 6D ITG/TEM/KBM proxies from Ionut. GP configurations and comparison commands are documented separately in [EXPERIMENTS.md](EXPERIMENTS.md). Existing benchmark commands and saved results retain their original protocol.
