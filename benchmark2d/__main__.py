@@ -8,8 +8,8 @@ import platform
 import subprocess
 import time
 from threadpoolctl import threadpool_limits
-from .core import CASES, Surface, Observations, evaluation_set, score, rmse
-from .strategies import ARMS, run_arm
+from .core import CASES, HOLISTIC_TARGETS, Surface, Observations, evaluation_set, score, rmse
+from .strategies import ARMS, DEFAULT_ARMS, run_arm
 
 
 def save(path, payload):
@@ -21,7 +21,7 @@ def save(path, payload):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
-    parser.add_argument("--arms", nargs="+", choices=ARMS, default=list(ARMS))
+    parser.add_argument("--arms", nargs="+", choices=ARMS, default=list(DEFAULT_ARMS))
     parser.add_argument("--budgets", type=int, nargs="+", default=[32, 64, 128])
     parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     parser.add_argument("--test-size", type=int, default=16384)
@@ -29,19 +29,33 @@ def main():
                         help="optional native-predictor diagnostic points; default 0 skips the slow secondary metric")
     parser.add_argument("--epsilon", type=float, default=.05)
     parser.add_argument("--band-epsilon", type=float, default=.10)
+    parser.add_argument("--nmae-epsilon", type=float, default=HOLISTIC_TARGETS["nmae"])
+    parser.add_argument("--band-nmae-epsilon", type=float, default=HOLISTIC_TARGETS["band_nmae"])
+    parser.add_argument("--p95-epsilon", type=float, default=HOLISTIC_TARGETS["p95_error"])
+    parser.add_argument("--vwfd-p95-epsilon", type=float, default=HOLISTIC_TARGETS["vwfd_p95"])
     parser.add_argument("--output", type=pathlib.Path, default=pathlib.Path("outputs/benchmark2d"))
     parser.add_argument("--plots-only", action="store_true")
+    parser.add_argument("--reference-only", action="store_true",
+                        help="render only step 01 truth geometry; no algorithm results required")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--quick", action="store_true", help="one case/seed, budgets 32 and 64")
     args = parser.parse_args()
-    from .report import render
+    from .report import render, render_reference
+    if args.reference_only:
+        render_reference(args.cases, min(args.seeds), args.output)
+        return
     if args.plots_only:
         render(json.loads((args.output/"results.json").read_text()), args.output)
         return
     if args.quick:
         args.cases, args.seeds, args.budgets = ["two-plane-four-peaks"], [0], [32, 64]
-    if min(args.budgets) < 9 or args.epsilon <= 0 or args.band_epsilon <= 0 or args.native_test_size < 0:
+    target_values = (args.nmae_epsilon, args.band_nmae_epsilon,
+                     args.p95_epsilon, args.vwfd_p95_epsilon)
+    if (min(args.budgets) < 9 or args.epsilon <= 0 or args.band_epsilon <= 0
+            or min(target_values) <= 0 or args.native_test_size < 0):
         parser.error("budgets >= 9 and positive tolerances required")
+    targets = dict(nmae=args.nmae_epsilon, band_nmae=args.band_nmae_epsilon,
+                   p95_error=args.p95_epsilon, vwfd_p95=args.vwfd_p95_epsilon)
     args.output.mkdir(parents=True, exist_ok=True)
     config = {k: v for k, v in vars(args).items() if k not in ("output", "plots_only", "resume", "quick")}
     config["protocol"] = "single trajectory, every integer N from 4; four charged corners"
@@ -90,7 +104,8 @@ def main():
                             if n > 4:
                                 prefix(all_x[n-1])
                             row = dict(**trial, budget=n, status="ok")
-                            row.update(score(surface, prefix, test, secondary=n in args.budgets))
+                            row.update(score(surface, prefix, test, secondary=n in args.budgets,
+                                             targets=targets))
                             if n != budget:
                                 row.pop("x"); row.pop("y")
                             else:

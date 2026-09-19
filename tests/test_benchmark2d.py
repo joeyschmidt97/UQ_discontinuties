@@ -2,8 +2,8 @@
 import json
 import numpy as np
 import pytest
-from benchmark2d.core import (Surface, Observations, BudgetExceeded, evaluation_set,
-                              reconstruct, rmse)
+from benchmark2d.core import (Surface, Observations, BudgetExceeded, HOLISTIC_TARGETS,
+                              evaluation_set, reconstruct, rmse, score)
 from benchmark2d.strategies import run_arm
 from benchmark2d.report import qualifying_cost
 
@@ -42,15 +42,33 @@ def test_peaks_are_inside_regions_and_folds_are_continuous(case,count):
         assert len(s.centers()) == count
         assert ((s.centers()>0) & (s.centers()<1)).all()
         if case != "smooth":
-            assert (s.distance(s.centers()) > .15).all()
+            distances = s.distance(s.centers())
+            if case == "three-plane-three-peaks":
+                assert ((distances[:2] > .07) & (distances[:2] < .09)).all() and distances[2] > .15
+            else:
+                assert ((distances > .07) & (distances < .09)).all()
             expected = [1,1,1] if count == 3 and "three-plane" in case else ([2,2] if count == 4 else [2,1])
             assert np.bincount(s.region(s.centers())).tolist() == expected
         p = np.array([.5,.5])
         assert abs(s([p+1e-9*s.normal])[0]-s([p-1e-9*s.normal])[0]) < 1e-7
 
 
+@pytest.mark.parametrize("case,pairs", [("two-plane-four-peaks", ((0,2),(1,3))),
+                                         ("three-plane-three-peaks", ((0,1),)),
+                                         ("two-plane-asymmetric", ((0,2),))])
+def test_competing_peak_pairs_have_a_cross_interface_dip(case, pairs):
+    for seed in range(3):
+        surface = Surface(case, seed)
+        centers = surface.centers()
+        for left, right in pairs:
+            pair = centers[[left, right]]
+            values = surface(np.vstack([pair, pair.mean(axis=0)]))
+            assert values[2] < values[:2].min()
+
+
 @pytest.mark.parametrize("name", ["grid", "moe", "triangles", "gpr-var", "gpr-grad", "gpr-blend", "moe-tri75", "moe-tri50",
-                                  "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20"])
+                                  "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20",
+                                  "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend", "vwrs", "vurs"])
 def test_designs_are_finite_reproducible_and_metered(name):
     runs = []
     for _ in range(2):
@@ -72,8 +90,33 @@ def test_target_must_persist_and_failed_checkpoint_cannot_win():
     assert qualifying_cost([], .05, .1) is None
 
 
+def test_holistic_score_keeps_error_and_resolution_components_interpretable():
+    surface = Surface("two-plane-four-peaks", seed=2)
+    obs = Observations(surface, 24)
+    run_arm("grid", obs, seed=2)
+    result = score(surface, obs, evaluation_set(surface, 2048))
+    required = {"nmae", "band_nmae", "p95_error", "fill_p95", "fill_max",
+                "min_separation", "vwfd_rms", "vwfd_p95", "holistic_error",
+                "holistic_driver", "vwfd_coverage_02", "vwfd_coverage_05",
+                "vwfd_coverage_10", "vwfd_coverage_target"}
+    assert required <= result.keys()
+    assert all(np.isfinite(result[key]) for key in required-{"holistic_driver"})
+    ratios = {key: result[key]/target for key, target in HOLISTIC_TARGETS.items()}
+    assert np.isclose(result["holistic_error"], max(ratios.values()))
+    assert result["holistic_driver"] == max(ratios, key=ratios.get)
+    assert 0 <= result["vwfd_coverage_02"] <= result["vwfd_coverage_05"] <= result["vwfd_coverage_10"] <= 1
+    assert result["vwfd_coverage_target"] >= result["vwfd_coverage_10"]
+
+
+def test_holistic_gate_controls_new_qualification_rows():
+    rows = [dict(n=16, budget=16, error=.01, band_error=.01, holistic_error=1.2, status="ok"),
+            dict(n=32, budget=32, error=.01, band_error=.01, holistic_error=.8, status="ok")]
+    assert qualifying_cost(rows, .05, .1) == 32
+
+
 @pytest.mark.parametrize("name", ["grid", "triangles", "gpr-var", "gpr-grad", "moe", "gpr-blend", "moe-tri75", "moe-tri50",
-                                  "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20"])
+                                  "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20",
+                                  "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend", "vwrs", "vurs"])
 def test_budget_does_not_change_earlier_decisions(name):
     small = Observations(Surface("smooth"), 12)
     large = Observations(Surface("smooth"), 16)
@@ -131,10 +174,12 @@ def test_acquisition_blend_normalizes_before_weighting():
 
 
 def test_gp_blend_weights_are_declared_and_ordered():
-    from benchmark2d.strategies import GP_BLENDS, ARMS
+    from benchmark2d.strategies import GP_BLENDS, ARMS, DEFAULT_ARMS
     assert GP_BLENDS["gpr-blend"] == GP_BLENDS["gpr-u50-g50"] == .5
     assert [GP_BLENDS[f"gpr-u{u}-g{100-u}"] for u in (20, 30, 50, 70, 80)] == [.2, .3, .5, .7, .8]
     assert all(name in ARMS for name in GP_BLENDS)
+    assert len(DEFAULT_ARMS) == 12
+    assert {"gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend", "vwrs", "vurs"} <= set(DEFAULT_ARMS)
 
 
 def test_fifty_fifty_blend_alias_reproduces_the_original_arm():

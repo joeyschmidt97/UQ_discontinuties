@@ -2,14 +2,17 @@
 from dataclasses import dataclass
 import numpy as np
 from scipy.interpolate import LinearNDInterpolator, RBFInterpolator
+from scipy.spatial import cKDTree, distance
 
 CORNERS = np.array([[0., 0.], [1., 0.], [0., 1.], [1., 1.]])
 CASES = ("smooth", "two-plane-four-peaks", "three-plane-three-peaks", "two-plane-asymmetric")
+TRANSITION_PEAK_OFFSET = .08
+HOLISTIC_TARGETS = dict(nmae=.05, band_nmae=.10, p95_error=.15, vwfd_p95=.25)
 
 
 @dataclass(frozen=True)
 class Surface:
-    """Continuous affine envelopes with smooth interior peaks, never fold peaks."""
+    """Continuous affine envelopes with peaks that probe their mode boundaries."""
     case: str
     seed: int = 0
 
@@ -49,11 +52,23 @@ class Surface:
         if self.case == "smooth":
             return np.array([.5+.13*self.normal])
         if self.case == "three-plane-three-peaks":
-            return .5+.27*self.normals
+            # Modes 0 and 1 carry a matched pair immediately across their
+            # shared boundary. Mode 2 keeps one isolated interior peak as a
+            # control: transition-focused samplers should not forget it.
+            n0, n1, n2 = self.normals
+            boundary_ray = (n0+n1)/np.linalg.norm(n0+n1)
+            across = (n0-n1)/np.linalg.norm(n0-n1)
+            base = .5+.22*boundary_ray
+            return np.array([base+TRANSITION_PEAK_OFFSET*across,
+                             base-TRANSITION_PEAK_OFFSET*across, .5+.27*n2])
         tangent = np.array([-self.normal[1], self.normal[0]])
-        positive = [.5+.25*self.normal+v*tangent for v in (-.17, .17)]
-        negative = ([.5-.25*self.normal+v*tangent for v in (-.17, .17)]
-                    if self.case == "two-plane-four-peaks" else [.5-.25*self.normal])
+        # Paired peaks straddle the fold at two tangential locations. Their
+        # centers are close enough to make peak and transition objectives
+        # compete, while remaining assigned to opposite modes.
+        positive = [.5+TRANSITION_PEAK_OFFSET*self.normal+v*tangent for v in (-.18, .18)]
+        negative = ([.5-TRANSITION_PEAK_OFFSET*self.normal+v*tangent for v in (-.18, .18)]
+                    if self.case == "two-plane-four-peaks"
+                    else [.5-TRANSITION_PEAK_OFFSET*self.normal-.18*tangent])
         return np.array(positive+negative)
 
     def __call__(self, x):
@@ -150,15 +165,42 @@ def evaluation_set(surface, n=16384):
     scale = float(np.ptp(y))
     band = np.abs(surface.distance(x)) < .06
     peak = np.min(np.linalg.norm(x[:, None, :]-surface.centers()[None, :, :], axis=2), axis=1) < .1
-    return x, y, scale, band, peak
+    grad2 = np.zeros(n)
+    for axis in range(2):
+        plus, minus = x.copy(), x.copy()
+        plus[:, axis] = np.minimum(1., plus[:, axis]+1e-4)
+        minus[:, axis] = np.maximum(0., minus[:, axis]-1e-4)
+        grad2 += ((surface(plus)-surface(minus))/(plus[:, axis]-minus[:, axis]))**2
+    return x, y, scale, band, peak, np.sqrt(grad2)
 
 
-def score(surface, observations, test, secondary=True):
-    x, truth, scale, band, peak = test
+def score(surface, observations, test, secondary=True, targets=None):
+    x, truth, scale, band, peak, truth_variation = test
     yhat = reconstruct(observations.x, observations.y, x)
     rbf = reconstruct(observations.x, observations.y, x, "rbf") if secondary else None
-    return dict(n=len(observations.x), n_requests=observations.requests,
-                error=rmse(yhat, truth, scale), band_error=rmse(yhat[band], truth[band], scale),
-                peak_error=rmse(yhat[peak], truth[peak], scale),
-                rbf_error=rmse(rbf, truth, scale) if secondary else None, scale=scale,
-                x=observations.x.tolist(), y=observations.y.tolist())
+    absolute = np.abs(yhat-truth)/scale
+    nearest = cKDTree(observations.x).query(x)[0]
+    vwfd = nearest*truth_variation/scale
+    separation = (float(distance.pdist(observations.x).min())
+                  if len(observations.x) > 1 else None)
+    out = dict(n=len(observations.x), n_requests=observations.requests,
+               error=float(np.sqrt(np.mean(absolute**2))),
+               nmae=float(np.mean(absolute)), p95_error=float(np.quantile(absolute, .95)),
+               band_error=rmse(yhat[band], truth[band], scale),
+               band_nmae=float(np.mean(absolute[band])),
+               peak_error=rmse(yhat[peak], truth[peak], scale),
+               peak_nmae=float(np.mean(absolute[peak])),
+               fill_p95=float(np.quantile(nearest, .95)), fill_max=float(nearest.max()),
+               min_separation=separation,
+               vwfd_rms=float(np.sqrt(np.mean(vwfd**2))),
+               vwfd_p95=float(np.quantile(vwfd, .95)),
+               vwfd_coverage_02=float(np.mean(vwfd <= .02)),
+               vwfd_coverage_05=float(np.mean(vwfd <= .05)),
+               vwfd_coverage_10=float(np.mean(vwfd <= .10)),
+               rbf_error=rmse(rbf, truth, scale) if secondary else None, scale=scale,
+               x=observations.x.tolist(), y=observations.y.tolist())
+    limits = HOLISTIC_TARGETS if targets is None else targets
+    out["vwfd_coverage_target"] = float(np.mean(vwfd <= limits["vwfd_p95"]))
+    out["holistic_error"] = float(max(out[name]/limits[name] for name in HOLISTIC_TARGETS))
+    out["holistic_driver"] = max(HOLISTIC_TARGETS, key=lambda name: out[name]/limits[name])
+    return out

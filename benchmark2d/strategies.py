@@ -15,16 +15,24 @@ GP_BLENDS = {"gpr-blend": .5, "gpr-u20-g80": .2, "gpr-u30-g70": .3,
 
 ARMS = ("grid", "moe", "sglib", "sgpp", "gpr-var", "gpr-grad", "triangles",
         "gpr-blend", "moe-tri75", "moe-tri50",
-        "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20")
+        "gpr-u20-g80", "gpr-u30-g70", "gpr-u50-g50", "gpr-u70-g30", "gpr-u80-g20",
+        "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend", "vwrs", "vurs")
+
+# Keep the primary rematch readable. Older MoE and GP-weight sweeps remain
+# selectable through ARMS without being repeated in every default run.
+DEFAULT_ARMS = ("grid", "sglib", "sgpp", "triangles",
+                "gpr-var", "gpr-grad", "gpr-blend",
+                "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend",
+                "vwrs", "vurs")
 
 
 def initialize(obs, seed):
     obs(qmc.LatinHypercube(2, seed=seed).random(min(5, obs.remaining)))
 
 
-def fit_gp(obs, seed):
+def fit_gp(obs, seed, nu=1.5):
     gp = GaussianProcessRegressor(
-        kernel=ConstantKernel(1., (1e-3, 1e3))*Matern([.2, .2], (1e-2, 10.), nu=1.5),
+        kernel=ConstantKernel(1., (1e-3, 1e3))*Matern([.2, .2], (1e-2, 10.), nu=nu),
         alpha=1e-8, normalize_y=True, random_state=seed, n_restarts_optimizer=0)
     with warnings.catch_warnings(record=True) as messages:
         warnings.simplefilter("always", ConvergenceWarning)
@@ -41,7 +49,7 @@ def normalized_blend(first, second, first_weight):
     return first_weight*a + (1-first_weight)*b
 
 
-def gpr(obs, seed, gradient=False, blend=None):
+def gpr(obs, seed, gradient=False, blend=None, nu=1.5):
     """`blend` is the GP-uncertainty share of the mixed acquisition score."""
     if blend is not None and not 0 <= blend <= 1:
         raise ValueError("uncertainty share must be between zero and one")
@@ -49,7 +57,7 @@ def gpr(obs, seed, gradient=False, blend=None):
     rng = np.random.default_rng(seed)
     warning_count = 0
     while obs.remaining:
-        gp, count = fit_gp(obs, seed)
+        gp, count = fit_gp(obs, seed, nu)
         warning_count += count
         candidates = rng.random((1024, 2))
         nearest = cKDTree(obs.x).query(candidates)[0]
@@ -73,10 +81,55 @@ def gpr(obs, seed, gradient=False, blend=None):
             batch.append(candidates[index])
             merit[np.linalg.norm(candidates-candidates[index], axis=1) < .06] = -np.inf
         obs(batch)
-    gp, count = fit_gp(obs, seed)
+    gp, count = fit_gp(obs, seed, nu)
     return gp.predict, dict(fit_warnings=warning_count+count, kernel=str(gp.kernel_),
+                            matern_nu=nu,
                             acquisition_weights=None if blend is None else
                             {"gpr-grad": 1-blend, "gpr-var": blend})
+
+
+def _triangle_gradient(obs, candidates):
+    """Piecewise-linear gradient magnitude using observed values only."""
+    tri = Delaunay(obs.x)
+    simplices = tri.simplices
+    vertices = obs.x[simplices]
+    matrices = np.concatenate([vertices, np.ones((*vertices.shape[:2], 1))], axis=2)
+    coefficients = np.linalg.solve(matrices, obs.y[simplices][..., None])[..., 0]
+    which = tri.find_simplex(candidates)
+    if (which < 0).any():
+        raise RuntimeError("shared corners should keep candidates inside the triangulation")
+    return np.linalg.norm(coefficients[which, :2], axis=1)
+
+
+def resolution_sampling(obs, seed, uncertainty=False):
+    """Basic VWRS, optionally augmented by Matérn-0.5 uncertainty (VURS)."""
+    initialize(obs, seed)
+    rng = np.random.default_rng(seed)
+    warning_count = 0
+    while obs.remaining:
+        candidates = rng.random((1024, 2))
+        distance = cKDTree(obs.x).query(candidates)[0]
+        variation = distance*(.1+_triangle_gradient(obs, candidates))
+        merit = normalized_blend(distance, variation, .5)
+        if uncertainty:
+            gp, count = fit_gp(obs, seed, nu=.5)
+            warning_count += count
+            sd = gp.predict(candidates, return_std=True)[1]
+            merit = (distance/max(float(distance.max()), 1e-12)
+                     + variation/max(float(variation.max()), 1e-12)
+                     + sd/max(float(sd.max()), 1e-12))/3
+        merit[distance < 1e-6] = -np.inf
+        obs(candidates[int(np.argmax(merit))])
+    metadata = dict(coverage_weight=1/3 if uncertainty else .5,
+                    variation_weight=1/3 if uncertainty else .5,
+                    uncertainty_weight=1/3 if uncertainty else 0.,
+                    variation="distance times observed piecewise-linear gradient")
+    if uncertainty:
+        gp, count = fit_gp(obs, seed, nu=.5)
+        warning_count += count
+        metadata.update(fit_warnings=warning_count, kernel=str(gp.kernel_), matern_nu=.5)
+        return gp.predict, metadata
+    return None, metadata
 
 
 def triangles(obs, seed):
@@ -125,6 +178,11 @@ def run_arm(name, obs, seed):
         return mixture(obs, seed, triangle_weight={"moe": 0., "moe-tri75": .25, "moe-tri50": .5}[name])
     if name in ("gpr-var", "gpr-grad") or name in GP_BLENDS:
         return gpr(obs, seed, gradient=name == "gpr-grad", blend=GP_BLENDS.get(name))
+    if name in ("gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend"):
+        return gpr(obs, seed, gradient=name == "gpr-m05-grad",
+                   blend=.5 if name == "gpr-m05-blend" else None, nu=.5)
+    if name in ("vwrs", "vurs"):
+        return resolution_sampling(obs, seed, uncertainty=name == "vurs")
     if name == "triangles":
         return triangles(obs, seed)
     if name == "sglib":

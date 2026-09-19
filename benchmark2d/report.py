@@ -15,7 +15,58 @@ COLORS = dict(grid="#758398", moe="#343a40", sglib="#b07813", sgpp="#9b59b6",
                  # Uncertainty/gradient ramp: warm at a gradient-dominated mix,
                  # cool as the uncertainty share grows.
                  "gpr-u20-g80": "#d94801", "gpr-u30-g70": "#fdae61", "gpr-u50-g50": "#e7298a",
-                 "gpr-u70-g30": "#6a3d9a", "gpr-u80-g20": "#1f78b4"})
+                 "gpr-u70-g30": "#6a3d9a", "gpr-u80-g20": "#1f78b4",
+                 "gpr-m05-var": "#005f73", "gpr-m05-grad": "#ca6702", "gpr-m05-blend": "#bb3e03",
+                 "vwrs": "#2a9d8f", "vurs": "#6d597a"})
+
+
+def render_reference(cases, seed, out):
+    """Render step 01 without requiring or mutating experiment results."""
+    from matplotlib.colors import Normalize
+    from matplotlib.cm import ScalarMappable
+    out = pathlib.Path(out)
+    figures = out/"figures"
+    figures.mkdir(parents=True, exist_ok=True)
+    a, b = np.meshgrid(np.linspace(0, 1, 161), np.linspace(0, 1, 161))
+    query = np.column_stack([a.ravel(), b.ravel()])
+    surfaces = {case: Surface(case, seed) for case in cases}
+    truth = {case: surfaces[case](query).reshape(a.shape) for case in cases}
+    low = min(float(z.min()) for z in truth.values())
+    high = max(float(z.max()) for z in truth.values())
+    fig = plt.figure(figsize=(5*len(cases), 10), layout="constrained")
+    axes = []
+    for col, case in enumerate(cases):
+        surface = surfaces[case]
+        centers = surface.centers()
+        ax = fig.add_subplot(2, len(cases), col+1, projection="3d")
+        axes.append(ax)
+        ax.plot_surface(a, b, truth[case], cmap="viridis", vmin=low, vmax=high,
+                        linewidth=0, rcount=121, ccount=121, antialiased=True)
+        ax.scatter(centers[:, 0], centers[:, 1], surface(centers), color="#ff4d4d",
+                   edgecolor="white", linewidth=.7, s=32, depthshade=False)
+        ax.set(title=case, xlabel="Parameter 1", ylabel="Parameter 2", zlabel="Growth-rate proxy",
+               xlim=(0, 1), ylim=(0, 1), zlim=(low, high))
+        ax.view_init(35, -20)
+        ax.tick_params(labelsize=8)
+
+        plan = fig.add_subplot(2, len(cases), len(cases)+col+1)
+        axes.append(plan)
+        plan.contourf(a, b, truth[case], levels=24, cmap="viridis", vmin=low, vmax=high)
+        if case != "smooth":
+            regions = surface.region(query).reshape(a.shape)
+            plan.contour(a, b, regions, levels=np.arange(len(surface.normals)-1)+.5,
+                         colors="white", linewidths=1.4)
+        plan.scatter(centers[:, 0], centers[:, 1], color="#ff4d4d", edgecolor="white",
+                     linewidth=.8, s=38, zorder=3)
+        plan.set(xlabel="Parameter 1", ylabel="Parameter 2", xlim=(0, 1), ylim=(0, 1),
+                 aspect="equal", title="Fold geometry and Gaussian centers")
+    fig.suptitle(f"01  Reference manifolds | geometry seed {seed} | transition-adjacent peaks", fontsize=17)
+    fig.colorbar(ScalarMappable(Normalize(low, high), "viridis"), ax=axes,
+                 location="bottom", shrink=.35, aspect=55, label="True growth-rate proxy")
+    path = figures/"01-manifold-reference.png"
+    fig.savefig(path, dpi=140, facecolor="white", bbox_inches="tight", pad_inches=.25)
+    plt.close(fig)
+    return path
 
 
 def curve(ax, rows, metric, color, label, expected_seeds=None, **kw):
@@ -47,7 +98,15 @@ def qualifying_cost(rows, epsilon, band_epsilon):
     # Measured checkpoint only; all subsequent tested point counts must pass.
     ordered = sorted(rows, key=lambda r: r["budget"])
     for i, row in enumerate(ordered):
-        if all(r["status"] == "ok" and r["error"] <= epsilon and r["band_error"] <= band_epsilon for r in ordered[i:]):
+        def passes(result):
+            if result["status"] != "ok":
+                return False
+            # Historical result files predate the holistic score. Preserve their
+            # original two-gate qualification rule when re-rendering them.
+            if "holistic_error" in result:
+                return result["holistic_error"] <= 1.0
+            return result["error"] <= epsilon and result["band_error"] <= band_epsilon
+        if all(passes(r) for r in ordered[i:]):
             return row["n"]
     return None
 
@@ -82,7 +141,7 @@ def aggregate_errors(payload):
 
 
 def render(payload, out):
-    """Five consolidated sheets. Acquisition/scoring results remain untouched."""
+    """Six consolidated sheets. Acquisition/scoring results remain untouched."""
     from matplotlib.colors import Normalize
     from matplotlib.cm import ScalarMappable
     out = pathlib.Path(out)
@@ -93,13 +152,16 @@ def render(payload, out):
     cases, arms = cfg["cases"], cfg["arms"]
     seed, cap = min(cfg["seeds"]), max(cfg["budgets"])
     ok = [r for r in rows if r["status"] == "ok"]
+    has_holistic = any("holistic_error" in row for row in ok)
     epsilon, band_epsilon = cfg["epsilon"], cfg["band_epsilon"]
     names = {"grid": "Progressive grid", "moe": "Mixture of experts", "sglib": "Ionut / sg_lib",
              "sgpp": "SG++", "gpr-var": "GP uncertainty", "gpr-grad": "GP gradient", "triangles": "Triangles", "gpr-blend": "GP grad/unc 50/50",
              "moe-tri75": "MoE/tri 75/25", "moe-tri50": "MoE/tri 50/50",
              "gpr-u20-g80": "GP unc/grad 20/80", "gpr-u30-g70": "GP unc/grad 30/70",
              "gpr-u50-g50": "GP unc/grad 50/50", "gpr-u70-g30": "GP unc/grad 70/30",
-             "gpr-u80-g20": "GP unc/grad 80/20"}
+             "gpr-u80-g20": "GP unc/grad 80/20",
+             "gpr-m05-var": "GP Matern .5 uncertainty", "gpr-m05-grad": "GP Matern .5 gradient",
+             "gpr-m05-blend": "GP Matern .5 grad/unc", "vwrs": "VWRS", "vurs": "VURS"}
     a, b = np.meshgrid(np.linspace(0, 1, 101), np.linspace(0, 1, 101))
     query = np.column_stack([a.ravel(), b.ravel()])
     surfaces = {case: Surface(case, seed) for case in cases}
@@ -115,22 +177,9 @@ def render(payload, out):
     # 1: Reference geometry, shared elevation and color scale.
     low = min(float(z.min()) for z in truth.values())
     high = max(float(z.max()) for z in truth.values())
-    fig = plt.figure(figsize=(5*len(cases), 5.8), layout="constrained")
-    axes = []
-    for col, case in enumerate(cases):
-        ax = fig.add_subplot(1, len(cases), col+1, projection="3d")
-        axes.append(ax)
-        ax.plot_surface(a, b, truth[case], cmap="viridis", vmin=low, vmax=high,
-                        linewidth=0, rcount=101, ccount=101, antialiased=True)
-        ax.set(title=case, xlabel="Parameter 1", ylabel="Parameter 2", zlabel="Growth-rate proxy",
-               xlim=(0, 1), ylim=(0, 1), zlim=(low, high))
-        ax.view_init(35, -20)
-        ax.tick_params(labelsize=8)
-    fig.suptitle(f"01  True 3-D manifolds | geometry seed {seed} | shared height and color scales", fontsize=17)
-    fig.colorbar(ScalarMappable(Normalize(low, high), "viridis"), ax=axes,
-                 location="bottom", shrink=.35, aspect=55, label="True growth-rate proxy")
-    save_figure(fig, "01-manifold-reference.png", "1. Start with the true manifolds",
-                "Exact synthetic surfaces, before any method samples them. All views share the same camera, height range and color scale. All peaks lie inside mode regions, away from continuous folds. Peak counts are 1, 4, 3 and 3.")
+    render_reference(cases, seed, out)
+    sheets.append(("01-manifold-reference.png", "1. Start with the true manifolds",
+                   "Exact surfaces and plan views before sampling. White lines mark mode switches; red points mark Gaussian centers. The two-plane peaks straddle folds. In the three-plane case, two peaks compete across one fold and the third remains isolated inside its own mode."))
 
     # 2: All strategies x all cases in one placement sheet.
     fig, axes = plt.subplots(len(cases), len(arms), figsize=(3.25*len(arms), 3.15*len(cases)),
@@ -275,10 +324,67 @@ def render(payload, out):
                 "avoiding double counting. Lower is better. An aggregate target does not guarantee that every test passes; "
                 "the per-case qualification table remains below.")
 
+    # 6: Interpretable components of the holistic stopping/qualification score.
+    metric_specs = [
+        ("nmae", "Global NMAE", cfg.get("nmae_epsilon", .05)),
+        ("band_nmae", "Fold-band NMAE", cfg.get("band_nmae_epsilon", .10)),
+        ("p95_error", "95th-percentile error / range", cfg.get("p95_epsilon", .15)),
+        ("vwfd_p95", "VWFD 95th percentile", cfg.get("vwfd_p95_epsilon", .25)),
+        ("holistic_error", "Holistic score H", 1.0),
+    ]
+    if has_holistic:
+        fig, axes = plt.subplots(len(metric_specs), len(cases),
+                                 figsize=(4.6*len(cases), 3.0*len(metric_specs)),
+                                 squeeze=False)
+        for col, case in enumerate(cases):
+            case_rows = [r for r in ok if r["case"] == case]
+            for i, (metric, ylabel, target) in enumerate(metric_specs):
+                ax = axes[i, col]
+                for arm in arms:
+                    arm_rows = [r for r in case_rows if r["arm"] == arm and metric in r]
+                    curve(ax, arm_rows, metric, COLORS[arm], names[arm],
+                          expected_seeds=cfg["seeds"], lw=1.5)
+                ax.axhline(target, color="#333333", ls="--", lw=1)
+                ax.set(xscale="log", yscale="log", xlim=(4, max(cfg["budgets"])*1.15),
+                       title=case if i == 0 else "",
+                       xlabel="Actual evaluations" if i == len(metric_specs)-1 else "")
+                if col == 0:
+                    ax.set_ylabel(ylabel)
+                ax.grid(alpha=.20, which="both")
+                ax.spines[["top", "right"]].set_visible(False)
+        handles, labels = axes[0, 0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="lower center", ncol=min(5, len(arms)),
+                   frameon=False, fontsize=9)
+        fig.suptitle("06  Holistic error components | dashed lines are qualification targets", fontsize=17)
+        fig.tight_layout(rect=(0, .055, 1, .97))
+        save_figure(fig, "06-holistic-error-types.png", "6. Compare complementary error types",
+                    "Global and fold-band mean absolute error, the 95th-percentile point error, and variation-weighted fill distance (VWFD) expose different failure modes. The final row is H, the largest target-normalized component; H <= 1 means every component passes. Lower and further left is better.")
+
     qualified_names = ", ".join(names[arm] for arm in arms if qualifies_everywhere[arm]) or "None within the tested budgets"
+    overview_count = 6 if has_holistic else 5
+    holistic_item = ("6. [Holistic error types](figures/06-holistic-error-types.png) â€” complementary accuracy and resolution metrics plus their single qualification score."
+                       if has_holistic else "")
+    winning_rule = ("New runs qualify when holistic score H <= 1, sustained through subsequent tested point counts. H is the worst target-normalized value among global NMAE, fold-band NMAE, 95th-percentile point error and VWFD."
+                    if has_holistic else
+                    f"This historical run qualifies when global RMS/range <= {epsilon:g} and boundary RMS/range <= {band_epsilon:g}, sustained through subsequent tested point counts.")
+    holistic_section = (f"""
+## Holistic qualification
+
+Sheet 06 reports four complementary quantities. NMAE gives an easy-to-read
+average absolute miss. Fold-band NMAE isolates mode transitions. The normalized
+95th-percentile error prevents a small set of severe misses from disappearing in
+an average. VWFD is the 95th percentile of nearest-sample distance multiplied by
+the exact reference-surface gradient and divided by truth range; it measures
+unresolved high-variation neighborhoods without fitting another surface.
+
+The single qualification value is
+`H = max(NMAE/{cfg.get('nmae_epsilon', .05):g}, fold NMAE/{cfg.get('band_nmae_epsilon', .10):g}, P95/{cfg.get('p95_epsilon', .15):g}, VWFD P95/{cfg.get('vwfd_p95_epsilon', .25):g})`.
+H <= 1 means every gate passes. Keep the components and spatial error map beside
+H: the scalar is a stopping/ranking aid, not a substitute for diagnostics.
+""" if has_holistic else "")
     guide = f"""# Plot guide â€” start here
 
-Five overview images consolidate the saved results. All {len(arms)} methods and
+{overview_count} overview images consolidate the saved results. All {len(arms)} methods and
 all {len(cases)} test cases are shown together. **Every integer point count from 4 to {cap} is scored on one nested trajectory per method and seed.**
 
 Read these in order:
@@ -288,8 +394,9 @@ Read these in order:
 3. [Error versus points](figures/03-error-versus-points.png) â€” the main accuracy/cost comparison, all methods on each chart.
 4. [Error maps](figures/04-reconstruction-error-map.png) â€” where the low-poly reconstruction misses a spike or boundary.
 5. [Performance scorecard](figures/05-performance-scorecard.png) â€” one combined error-versus-points curve per method, pooling all surfaces and seeds.
+{holistic_item}
 
-Or open [the single scrolling report](index.html), which includes all five sheets.
+Or open [the single scrolling report](index.html), which includes all {overview_count} sheets.
 
 ## How to read the figures
 
@@ -297,7 +404,7 @@ Or open [the single scrolling report](index.html), which includes all five sheet
 - **Dot colors:** dark = early, yellow = late within that design. Progressive-grid order is geometric, independent of observed values. Pale gray contours show the true surface; teal/cyan marks the true mode-switch boundary. The smooth control has no boundary.
 - **Error curves:** medians across all {len(cfg['seeds'])} seeds/geometries; bands are the middle 50%, not confidence intervals. Top row is global error; bottom is error near the boundary. The smooth control has no fold; its lower panel repeats global error.
 - **Axes and colors:** 3-D height scales, convergence axes and normalized residual colors are shared. Residuals above 0.5 use the brightest color. The reference height is a synthetic growth-rate proxy, not calibrated GENE output.
-- **Winning:** smaller error with fewer actual evaluations is better. Qualification requires global RMS/range <= {epsilon:g} and boundary RMS/range <= {band_epsilon:g}, sustained through subsequent tested point counts. A dense-looking cluster of dots is not itself evidence of accuracy.
+- **Winning:** smaller error with fewer actual evaluations is better. {winning_rule} A dense-looking cluster of dots is not itself evidence of accuracy.
 - **Snapshot versus curve:** the dots show one seed; curves summarize all seeds. Different seeds rotate the geometry. Do not expect the snapshot's individual error to equal the median curve.
 - **Budgets:** one trajectory per case/seed/method, scored at every integer N. Every curve compares identical N across methods. Sparse-grid batches are evaluated in prescribed order; a prefix may end inside a batch before its native surrogate can be updated. This compares point placement through the common low-poly reconstruction, not native-model update frequency.
 
@@ -316,6 +423,8 @@ The dotted aggregate reference is not an all-tests qualification rule: easy
 cases can offset difficult cases. Retain sheet 03 and the HTML qualification
 table when diagnosing individual failures. [Combined data](aggregate-scores.json)
 contains the formula, weights and every plotted value.
+
+{holistic_section}
 
 ## Methods and geometry
 
@@ -360,7 +469,7 @@ does not repeat every intermediate 3-D view; the full learning curves retain all
 integer point counts. RBF checks are saved only at configured checkpoints; coordinates are stored once at the final N and sliced for earlier prefixes. The previous experiments remain available in Git history.
 """
     (out/"README.md").write_text(guide, encoding="utf-8")
-    pieces = ["<h1>2-D benchmark â€” five comparison sheets</h1>",
+    pieces = [f"<h1>2-D benchmark â€” {overview_count} comparison sheets</h1>",
               "<p>Start with the reference surfaces, compare the point placement, then judge error per evaluation. "
               "The placement maps show one seed; the error curves summarize all paired seeds.</p>",
               '<p><a href="README.md">Plot-reading guide</a> Â· <a href="../../RESULTS.md">Detailed results</a> Â· <a href="results.json">Saved data</a></p>',
