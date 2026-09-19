@@ -1,9 +1,8 @@
-# 2-D holistic-metrics smoke verification
+# 2-D N=150 holistic-metrics verification
 
-This is a small implementation check, not a benchmark ranking. It uses one
-geometry seed, two folded reference surfaces, and a maximum of 24 paid samples.
-The report is tracked so the new metrics and all-model plots can be reviewed
-before spending the full rematch budget.
+This is an expanded implementation check, not the final benchmark ranking. It
+uses one geometry seed and the two revised folded reference surfaces, scoring
+every integer point count from 4 through 150 on 4,096 fixed evaluation points.
 
 Run from the repository root with the repository `.venv`:
 
@@ -11,21 +10,22 @@ Run from the repository root with the repository `.venv`:
 .\.venv\Scripts\python.exe -m benchmark2d `
   --cases two-plane-four-peaks three-plane-three-peaks `
   --arms grid sglib triangles gpr-var gpr-grad gpr-blend gpr-m05-var gpr-m05-grad gpr-m05-blend vwrs vurs `
-  --seeds 0 --budgets 16 24 --test-size 2048 `
+  --seeds 0 --budgets 50 100 150 --test-size 4096 `
   --output results\2d-smoke-2026-09-19
 ```
 
-An initial run requested all twelve default arms. SG++ was unavailable because
-this Windows environment does not have the `pysgpp` Python bindings. No SG++
-values are mocked or inferred. The report was regenerated with the eleven arms
-that completed so its aggregate curve contains a fair matched field.
+SG++ is omitted because this Windows environment does not have the `pysgpp`
+Python bindings. An earlier all-default-arm preflight reported that arm as
+unavailable. No SG++ values are mocked or inferred. Ionut's `sglib` completed.
 
-All 59 focused tests passed after generation:
+All 60 focused tests passed after the report change:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\test_benchmark2d.py -q -p no:cacheprovider
 ```
 
-At N=24, triangles has the lowest pooled normalized RMS in this smoke field
-(0.1125). The result is too small for winner selection: it has one seed, only
-two of the four cases, and a much smaller cap than the planned rematch.
+Sheet 05 shows equal-weight pooled normalized RMS across the two surfaces.
+Sheet 06 gives one pooled subplot per error family with every method overlaid;
+it does not split the same error into separate manifold panels. At N=150,
+the 50/50 Matérn-3/2 GP gradient/uncertainty blend has the lowest combined RMS
+(0.0250). This one-seed, two-case result is not sufficient to select a winner.

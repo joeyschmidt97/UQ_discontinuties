@@ -9,6 +9,8 @@ or [results and interpretation](RESULTS.md).
 The performance scorecard combines all four surfaces and three seeds into one
 log-log error-versus-points chart for every method, with equal weight per test.
 Per-case diagnostics remain available to explain differences hidden by pooling.
+The holistic diagnostic sheet uses one subplot per error family and overlays all
+methods after pooling cases and seeds, avoiding repeated manifold columns.
 
 ## Repository layout
 

@@ -164,6 +164,19 @@ def test_combined_error_pools_squared_errors_and_requires_matched_field():
         aggregate_errors(dict(config=cfg, rows=[dict(rows[0], error=float("nan"))]+rows[1:]))
 
 
+def test_metric_pooling_uses_declared_reduction_and_keeps_complete_arms():
+    from benchmark2d.report import aggregate_metric
+    cfg = dict(cases=["a", "b"], seeds=[0], arms=["one", "two"])
+    rows = [dict(case=case, seed=0, arm="one", n=8, budget=8, status="ok", metric=value)
+            for case, value in (("a", .1), ("b", .3))]
+    rows.append(dict(case="a", seed=0, arm="two", n=8, budget=8, status="ok", metric=.2))
+    payload = dict(config=cfg, rows=rows)
+    assert np.isclose(aggregate_metric(payload, "metric", "mean")["one"][0]["value"], .2)
+    assert np.isclose(aggregate_metric(payload, "metric", "rms")["one"][0]["value"], np.sqrt(.05))
+    assert aggregate_metric(payload, "metric", "max")["one"][0]["value"] == .3
+    assert aggregate_metric(payload, "metric", "mean")["two"] == []
+
+
 def test_acquisition_blend_normalizes_before_weighting():
     from benchmark2d.strategies import normalized_blend
     assert np.allclose(normalized_blend([10., 0.], [0., 2.], .5), [.5, .5])

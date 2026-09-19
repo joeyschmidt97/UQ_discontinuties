@@ -140,6 +140,51 @@ def aggregate_errors(payload):
                        tests=len(expected)) for n in common] for arm in cfg["arms"]}
 
 
+def aggregate_metric(payload, metric, reduction="mean"):
+    """Combine one normalized metric across a matched case/seed field.
+
+    Each case and seed receives equal weight. ``rms`` preserves the pooled-RMS
+    definition used by the legacy scorecard; ``max`` exposes the worst test for
+    the all-gates holistic score. A method is plotted only where its own field is
+    complete, so one unavailable backend does not erase completed methods.
+    """
+    cfg = payload["config"]
+    expected = {(case, seed) for case in cfg["cases"] for seed in cfg["seeds"]}
+    curves = {}
+    for arm in cfg["arms"]:
+        groups = {}
+        for row in payload["rows"]:
+            if (row["arm"] != arm or row["status"] != "ok" or row["n"] != row["budget"]
+                    or metric not in row):
+                continue
+            identity = (row["case"], row["seed"])
+            if identity not in expected:
+                continue
+            group = groups.setdefault(row["n"], {})
+            if identity in group:
+                raise ValueError("duplicate case/seed at the same point count")
+            value = float(row[metric])
+            if not np.isfinite(value) or value < 0:
+                raise ValueError("combined scores require finite nonnegative metrics")
+            group[identity] = value
+        points = []
+        for n in sorted(groups):
+            if set(groups[n]) != expected:
+                continue
+            values = np.array(list(groups[n].values()))
+            if reduction == "rms":
+                value = float(np.sqrt(np.mean(values**2)))
+            elif reduction == "max":
+                value = float(values.max())
+            elif reduction == "mean":
+                value = float(values.mean())
+            else:
+                raise ValueError(f"unknown reduction: {reduction}")
+            points.append(dict(n=n, value=value, tests=len(expected)))
+        curves[arm] = points
+    return curves
+
+
 def render(payload, out):
     """Six consolidated sheets. Acquisition/scoring results remain untouched."""
     from matplotlib.colors import Normalize
@@ -324,45 +369,44 @@ def render(payload, out):
                 "avoiding double counting. Lower is better. An aggregate target does not guarantee that every test passes; "
                 "the per-case qualification table remains below.")
 
-    # 6: Interpretable components of the holistic stopping/qualification score.
+    # 6: Every error family pooled across cases/seeds; no manifold split.
     metric_specs = [
-        ("nmae", "Global NMAE", cfg.get("nmae_epsilon", .05)),
-        ("band_nmae", "Fold-band NMAE", cfg.get("band_nmae_epsilon", .10)),
-        ("p95_error", "95th-percentile error / range", cfg.get("p95_epsilon", .15)),
-        ("vwfd_p95", "VWFD 95th percentile", cfg.get("vwfd_p95_epsilon", .25)),
-        ("holistic_error", "Holistic score H", 1.0),
+        ("error", "Global normalized RMS", epsilon, "rms"),
+        ("nmae", "Global NMAE", cfg.get("nmae_epsilon", .05), "mean"),
+        ("p95_error", "Normalized point-error P95", cfg.get("p95_epsilon", .15), "mean"),
+        ("band_error", "Fold-band normalized RMS", band_epsilon, "rms"),
+        ("band_nmae", "Fold-band NMAE", cfg.get("band_nmae_epsilon", .10), "mean"),
+        ("peak_error", "Peak-region normalized RMS", None, "rms"),
+        ("peak_nmae", "Peak-region NMAE", None, "mean"),
+        ("vwfd_p95", "VWFD P95", cfg.get("vwfd_p95_epsilon", .25), "mean"),
+        ("holistic_error", "Worst-case holistic score H", 1.0, "max"),
     ]
     if has_holistic:
-        fig, axes = plt.subplots(len(metric_specs), len(cases),
-                                 figsize=(4.6*len(cases), 3.0*len(metric_specs)),
-                                 squeeze=False)
-        for col, case in enumerate(cases):
-            case_rows = [r for r in ok if r["case"] == case]
-            for i, (metric, ylabel, target) in enumerate(metric_specs):
-                ax = axes[i, col]
-                for arm in arms:
-                    arm_rows = [r for r in case_rows if r["arm"] == arm and metric in r]
-                    curve(ax, arm_rows, metric, COLORS[arm], names[arm],
-                          expected_seeds=cfg["seeds"], lw=1.5)
+        fig, axes = plt.subplots(3, 3, figsize=(16, 13), squeeze=False)
+        for ax, (metric, title, target, reduction) in zip(axes.ravel(), metric_specs):
+            pooled = aggregate_metric(payload, metric, reduction)
+            for arm in arms:
+                points = pooled[arm]
+                if points:
+                    ax.plot([p["n"] for p in points], [p["value"] for p in points],
+                            color=COLORS[arm], label=names[arm], lw=1.6)
+            if target is not None:
                 ax.axhline(target, color="#333333", ls="--", lw=1)
-                ax.set(xscale="log", yscale="log", xlim=(4, max(cfg["budgets"])*1.15),
-                       title=case if i == 0 else "",
-                       xlabel="Actual evaluations" if i == len(metric_specs)-1 else "")
-                if col == 0:
-                    ax.set_ylabel(ylabel)
-                ax.grid(alpha=.20, which="both")
-                ax.spines[["top", "right"]].set_visible(False)
+            ax.set(xscale="log", yscale="log", xlim=(4, max(cfg["budgets"])*1.15),
+                   title=title, xlabel="Paid evaluations per test")
+            ax.grid(alpha=.20, which="both")
+            ax.spines[["top", "right"]].set_visible(False)
         handles, labels = axes[0, 0].get_legend_handles_labels()
         fig.legend(handles, labels, loc="lower center", ncol=min(5, len(arms)),
                    frameon=False, fontsize=9)
-        fig.suptitle("06  Holistic error components | dashed lines are qualification targets", fontsize=17)
-        fig.tight_layout(rect=(0, .055, 1, .97))
+        fig.suptitle(f"06  All error diagnostics pooled across {len(cases)} surfaces x {len(cfg['seeds'])} seeds", fontsize=17)
+        fig.tight_layout(rect=(0, .07, 1, .97))
         save_figure(fig, "06-holistic-error-types.png", "6. Compare complementary error types",
-                    "Global and fold-band mean absolute error, the 95th-percentile point error, and variation-weighted fill distance (VWFD) expose different failure modes. The final row is H, the largest target-normalized component; H <= 1 means every component passes. Lower and further left is better.")
+                    "Each subplot is one error type with all methods overlaid; cases and seeds are pooled instead of split into separate panels. RMS summaries use equal-weight pooled RMS, NMAE/P95/VWFD use equal-weight means, and H shows the worst case/seed. Dashed lines are declared targets; peak diagnostics have no qualification target. Lower and further left is better.")
 
     qualified_names = ", ".join(names[arm] for arm in arms if qualifies_everywhere[arm]) or "None within the tested budgets"
     overview_count = 6 if has_holistic else 5
-    holistic_item = ("6. [Holistic error types](figures/06-holistic-error-types.png) â€” complementary accuracy and resolution metrics plus their single qualification score."
+    holistic_item = ("6. [All error diagnostics](figures/06-holistic-error-types.png) â€” one pooled subplot per error type, with every method overlaid."
                        if has_holistic else "")
     winning_rule = ("New runs qualify when holistic score H <= 1, sustained through subsequent tested point counts. H is the worst target-normalized value among global NMAE, fold-band NMAE, 95th-percentile point error and VWFD."
                     if has_holistic else
@@ -370,12 +414,15 @@ def render(payload, out):
     holistic_section = (f"""
 ## Holistic qualification
 
-Sheet 06 reports four complementary quantities. NMAE gives an easy-to-read
-average absolute miss. Fold-band NMAE isolates mode transitions. The normalized
-95th-percentile error prevents a small set of severe misses from disappearing in
-an average. VWFD is the 95th percentile of nearest-sample distance multiplied by
-the exact reference-surface gradient and divided by truth range; it measures
-unresolved high-variation neighborhoods without fitting another surface.
+Sheet 06 places every error family in its own subplot and overlays all methods,
+pooling across cases and seeds instead of repeating panels by manifold. It shows
+global/fold/peak normalized RMS and NMAE, normalized point-error P95, VWFD P95,
+and the holistic score. NMAE gives an easy-to-read average absolute miss; fold
+metrics isolate mode transitions; peak metrics expose missed maxima; P95 prevents
+a small set of severe misses from disappearing in an average. VWFD is the 95th
+percentile of nearest-sample distance multiplied by exact reference-surface
+gradient and divided by truth range, so it measures unresolved high-variation
+neighborhoods without fitting another surface.
 
 The single qualification value is
 `H = max(NMAE/{cfg.get('nmae_epsilon', .05):g}, fold NMAE/{cfg.get('band_nmae_epsilon', .10):g}, P95/{cfg.get('p95_epsilon', .15):g}, VWFD P95/{cfg.get('vwfd_p95_epsilon', .25):g})`.
