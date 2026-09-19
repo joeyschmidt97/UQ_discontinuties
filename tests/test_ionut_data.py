@@ -3,6 +3,7 @@ import pytest
 from scripts.generate_ionut_data import CASES,generate,values
 from scripts.datasets import load_dataset,surface_for
 from scripts import ionut_proxies as proxy
+from scripts.generate_ionut_slices import CASES as SLICE_CASES, expand, generate as generate_slice
 
 @pytest.mark.parametrize('case',CASES)
 def test_proxy_archives_match_continuous_values(tmp_path,case):
@@ -23,3 +24,15 @@ def test_proxy_archives_match_continuous_values(tmp_path,case):
 def test_reject_invalid_proxy_input():
     with pytest.raises(ValueError): values(CASES[0],np.zeros((2,5)))
     with pytest.raises(ValueError): surface_for(6,CASES[0],1)
+
+
+@pytest.mark.parametrize('case', SLICE_CASES)
+def test_3d_slices_match_the_declared_native_6d_condition(tmp_path, case):
+    path = generate_slice(tmp_path, case, 16, 32)
+    meta, pool, test = load_dataset(path)
+    assert meta['native_dimension'] == 6 and meta['dimension'] == 3
+    assert np.array_equal(test['native_x'], expand(case, test['x']))
+    assert np.array_equal(surface_for(3, case, 0)(test['x']), test['y'])
+    native = values(meta['native_case'], test['native_x'])
+    assert np.array_equal(native['y'], test['y'])
+    assert not set(map(tuple, pool['x'])) & set(map(tuple, test['x']))

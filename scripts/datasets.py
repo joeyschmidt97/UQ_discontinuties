@@ -6,6 +6,11 @@ import numpy as np
 
 
 def surface_for(dim, case, seed):
+    if dim == 3:
+        from scripts.generate_ionut_slices import CASES, values
+        if case not in CASES or seed != 0:
+            raise ValueError('3D Ionut slices require a known case and surface seed 0')
+        return lambda x: values(case, x)['y']
     if dim == 6:
         from scripts.generate_ionut_data import CASES, values
         if case not in CASES or seed != 0:

@@ -4,6 +4,7 @@ This directory contains versioned data arrays, manifests and data documentation.
 
 - `2d/`, `5d/`, `8d/`: existing affine-envelope/Gaussian-peak synthetic cases.
 - `6d/`: Ionut Farcas's phenomenological microinstability proxies at their native dimension.
+- Optional generated `3d/`: declared conditional slices of the native ITG–TEM and ITG–KBM formulas.
 - Each case contains `seed-0/pool.npz`, `evaluation.npz`, and `manifest.json`.
 - All generated arrays and manifests are tracked in Git. Generators refuse overwrites.
 
@@ -44,6 +45,16 @@ square-root branch onsets remain nonsmooth. The blend is a separate smooth
 phenomenological target. These proxies contain ITG/TEM/KBM, not ETG or MTM.
 No 2D/5D slices or 8D extensions are silently substituted for native 6D data.
 The formulas do not use a random surface seed; seed-0 is a common layout label.
+
+### Declared 3D conditional slices
+
+`python -m scripts.generate_ionut_slices --output data` creates hard/soft
+gamma/omega slices for two transition families. ITG–TEM varies
+`[RLTi, RLTe, nu]` with `RLn=2`, `beta=0`, `ky=0.30`; ITG–KBM varies
+`[RLTi, beta, ky_scale]` with `RLTe=5`, `RLn=2`, `nu=0`. Every archive stores
+the expanded native 6D coordinates so equality to the upstream formula is
+testable. These are conditional views, not claims of three-dimensional intrinsic
+structure and not substitutes for the tracked native 6D archives.
 
 ## Array and provenance format
 
