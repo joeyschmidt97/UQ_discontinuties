@@ -168,3 +168,31 @@ def test_the_rbf_evaluator_is_labelled_secondary_in_every_row():
     row = score(surface, obs, test)
     assert row["reconstruction_role"] == "secondary"
     assert row["reconstruction"] == "thin-plate-spline-rbf"
+
+
+def test_declared_tolerances_exist_for_five_and_refuse_eight():
+    from benchmarknd.core import tolerances_for
+    spine, ported = tolerances_for(5)
+    assert set(spine) == {"vwfd_p95", "nonlinear_p95", "fill_p95"}
+    assert set(ported) == {"nmae", "band_nmae", "p95_error", "vwfd_p95"}
+    assert tolerances_for(5, band_available=False)[1].keys() == {"nmae", "p95_error", "vwfd_p95"}
+    # 8D has not been calibrated; inheriting the 5D limits would be the bug.
+    with pytest.raises(ValueError, match="no calibrated tolerances"):
+        tolerances_for(8)
+
+
+def test_spine_holistic_is_primary_and_ported_rides_along_labelled():
+    from benchmarknd.core import tolerances_for
+    surface = SurfaceND("5d-m2-rotated", 0)
+    test = evaluation_set(surface, 4096)
+    obs = Observations(surface, 40, 5, 0)
+    while obs.remaining:
+        obs(np.random.default_rng(obs.remaining).random((1, 5)))
+    spine, ported = tolerances_for(5)
+    row = score(surface, obs, test, targets=spine, secondary_targets=ported)
+    assert row["holistic_uncalibrated"] is False
+    assert row["holistic_driver"] in spine
+    assert row["ported_holistic_uncalibrated"] is False
+    assert row["ported_holistic_driver"] in ported
+    # The primary score must not contain a reconstruction-based term.
+    assert not {"nmae", "band_nmae", "p95_error"} & set(row["holistic_targets"])

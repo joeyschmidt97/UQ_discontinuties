@@ -12,6 +12,32 @@ from scipy.stats import qmc
 from resolution import fit_free_scores, knn_variation
 from .cases import CASES, strengths
 
+# Holistic tolerances, per input dimension, measured against the `space-filling`
+# reference arm at the declared budget (results/nd-calibration-2026-09-20).
+# Nothing is defaulted across dimensions: an absent dimension raises rather than
+# inheriting a foreign limit.
+#
+# SPINE is primary above three dimensions. Every term is fit-free, so none can
+# be inverted by a concentrated design and all three survive to 8D unchanged.
+# PORTED keeps the 2D/3D four-term shape as a labelled secondary so continuity
+# with the published low-dimensional scores stays visible; three of its terms
+# come from the demoted thin-plate-spline evaluator and it must not decide a
+# ranking.
+#
+# Calibration rule: the reference arm's worst case at the declared budget,
+# rounded up. One declared asymmetry -- `fill_p95` is set at 1.5x the reference
+# worst case rather than at it, because `space-filling` optimizes fill distance
+# by construction and its own optimum cannot serve as a bar any other method
+# could clear. All values are provisional normalized tolerances at the stated
+# budget, not fitted accuracy claims.
+SPINE_TOLERANCES = {
+    5: dict(vwfd_p95=.70, nonlinear_p95=2.50, fill_p95=.40),
+}
+PORTED_TOLERANCES = {
+    5: dict(nmae=.035, band_nmae=.035, p95_error=.13, vwfd_p95=.70),
+}
+CALIBRATION_BUDGET = {5: 512}
+
 NARROW, WIDE = .06, .5          # peak sigma at full strength and at weak strength
 ENVELOPE, BASE = .65, .15       # affine-envelope and base-slope amplitudes
 AMPLITUDES = (.9, .7, .8, .6)
@@ -269,14 +295,19 @@ def evaluation_set(surface, n=65536, band=.06, peak=2.):
                 variation=variation, curvature=curvature)
 
 
-def score(surface, observations, test, targets=None, observed_variation=False):
+def score(surface, observations, test, targets=None, secondary_targets=None,
+          observed_variation=False):
     """Fit-free spine first, reconstruction-based errors second.
 
-    `targets` are the holistic tolerances for *this* input dimension. They are
+    `targets` are the primary holistic tolerances for *this* input dimension,
+    and above three dimensions they are the fit-free spine set. They are
     deliberately not defaulted: the 2D values were calibrated against a regular
     grid at N=128 in two dimensions and carry no meaning elsewhere. Passing None
     reports every component and marks the holistic score uncalibrated rather
-    than silently reusing a foreign tolerance.
+    than silently reusing a foreign tolerance. `secondary_targets` records the
+    ported 2D/3D four-term shape alongside it, labelled, so continuity with the
+    published low-dimensional scores is visible without letting a term from the
+    demoted evaluator decide a ranking.
 
     The reconstruction-based family below uses the common thin-plate-spline RBF,
     which is demoted to a secondary cross-check: its normalized error rises with
@@ -305,14 +336,37 @@ def score(surface, observations, test, targets=None, observed_variation=False):
         out[f"mode{m}_error"] = rmse(yhat[mask], truth[mask], scale)
         out[f"mode{m}_nmae"] = float(np.mean(absolute[mask]))
 
-    out.update(holistic_error=None, holistic_driver=None, holistic_targets=None,
-               holistic_uncalibrated=True)
-    if targets is not None:
-        missing = [name for name in targets if out.get(name) is None]
-        if missing:
-            raise ValueError(f"holistic targets name unavailable scores: {missing}")
-        ratios = {name: out[name]/limit for name, limit in targets.items()}
-        out.update(holistic_error=float(max(ratios.values())),
-                   holistic_driver=max(ratios, key=ratios.get),
-                   holistic_targets=dict(targets), holistic_uncalibrated=False)
+    _apply_targets(out, targets, "holistic")
+    _apply_targets(out, secondary_targets, "ported_holistic")
     return out
+
+
+def _apply_targets(out, targets, prefix):
+    out.update({prefix + "_error": None, prefix + "_driver": None,
+                prefix + "_targets": None, prefix + "_uncalibrated": True})
+    if targets is None:
+        return
+    missing = [name for name in targets if out.get(name) is None]
+    if missing:
+        raise ValueError(f"{prefix} targets name unavailable scores: {missing}")
+    ratios = {name: out[name]/limit for name, limit in targets.items()}
+    out.update({prefix + "_error": float(max(ratios.values())),
+                prefix + "_driver": max(ratios, key=ratios.get),
+                prefix + "_targets": dict(targets), prefix + "_uncalibrated": False})
+
+
+def tolerances_for(dim, band_available=True):
+    """The declared tolerance pair for this dimension, or a refusal.
+
+    `band_available` drops the fold-band term for the one-mode controls, which
+    have no fold for it to measure.
+    """
+    if dim not in SPINE_TOLERANCES:
+        raise ValueError(
+            f"no calibrated tolerances for d={dim}; run the reference-arm "
+            f"calibration first, as was done for d=5 at budget "
+            f"{CALIBRATION_BUDGET.get(5)}")
+    ported = dict(PORTED_TOLERANCES[dim])
+    if not band_available:
+        ported.pop("band_nmae", None)
+    return dict(SPINE_TOLERANCES[dim]), ported

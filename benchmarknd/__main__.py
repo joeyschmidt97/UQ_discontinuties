@@ -16,7 +16,7 @@ import time
 import numpy as np
 from threadpoolctl import threadpool_limits
 from .cases import CASES
-from .core import SurfaceND, Observations, evaluation_set, score
+from .core import SurfaceND, Observations, evaluation_set, score, tolerances_for
 from .strategies import ARMS, run_arm
 
 # The high-dimensional field. Tetrahedral refinement and the dyadic grid do not
@@ -95,6 +95,11 @@ def main():
             for seed in args.seeds:
                 surface = SurfaceND(case, seed)
                 test = evaluation_set(surface, args.test_size)
+                # Spine tolerances are primary above three dimensions; the
+                # ported four-term shape rides along labelled. Both are
+                # preregistered per dimension, so an uncalibrated dimension
+                # stops the run here rather than producing an unreadable H.
+                spine, ported = tolerances_for(dim, band_available=bool(test["band"].any()))
                 for arm in args.arms:
                     if (case, seed, arm) in done:
                         continue
@@ -117,7 +122,8 @@ def main():
                             while len(prefix.x) < n:
                                 prefix(all_x[len(prefix.x)])
                             row = dict(**trial, budget=budget, status="ok")
-                            row.update(score(surface, prefix, test))
+                            row.update(score(surface, prefix, test,
+                                             targets=spine, secondary_targets=ported))
                             row["x"] = prefix.x.tolist() if n == budget else None
                             row["y"] = prefix.y.tolist() if n == budget else None
                             if n == budget:
@@ -125,11 +131,13 @@ def main():
                                 row["acquisition_seconds"] = acquisition
                                 row["seconds"] = time.perf_counter()-start
                             rows.append(row)
-                            print(f"    N={n:5} error {row['error']:.4f} band {row['band_error'] or float('nan'):.4f}"
-                                  f" peak {row['peak_error']:.4f}", flush=True)
+                            print(f"    N={n:5} H {row['holistic_error']:.3f}"
+                                  f" ({row['holistic_driver']}) vwfd95 {row['vwfd_p95']:.4f}"
+                                  f" fill95 {row['fill_p95']:.4f} rbf {row['error']:.4f}", flush=True)
                         payload["rows"].extend(rows)
                         print(f"[{time.strftime('%H:%M:%S')}] done  {case} seed={seed} {arm} "
-                              f"final {rows[-1]['error']:.4f} in {rows[-1]['seconds']/60:.1f} min", flush=True)
+                              f"final H {rows[-1]['holistic_error']:.3f} in "
+                              f"{rows[-1]['seconds']/60:.1f} min", flush=True)
                     except Exception as exc:
                         payload["rows"].append(dict(**trial, budget=budget, n=len(obs.x), status="failed",
                                                     reason=f"{type(exc).__name__}: {exc}"))
