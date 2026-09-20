@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.interpolate import RBFInterpolator
 from scipy.stats import qmc
+from resolution import fit_free_scores, knn_variation
 from .cases import CASES, strengths
 
 NARROW, WIDE = .06, .5          # peak sigma at full strength and at weak strength
@@ -236,23 +237,82 @@ def rmse(predicted, truth, scale=1.):
     return float(np.sqrt(np.mean((predicted-truth)**2))/scale)
 
 
+def truth_variation(surface, x, step=1e-4):
+    """Exact finite-difference slope and curvature magnitude of the reference.
+
+    Grading variation comes from the analytic surface, never from a sampler's
+    own estimate, so VWRS and VURS cannot grade the estimator they sample with.
+    """
+    x = np.atleast_2d(np.asarray(x, float))
+    gradient2 = np.zeros(len(x))
+    curvature2 = np.zeros(len(x))
+    base = surface(x)
+    for axis in range(surface.dim):
+        plus, minus = x.copy(), x.copy()
+        plus[:, axis] = np.minimum(1., plus[:, axis]+step)
+        minus[:, axis] = np.maximum(0., minus[:, axis]-step)
+        span = plus[:, axis]-minus[:, axis]
+        up, down = surface(plus), surface(minus)
+        gradient2 += ((up-down)/span)**2
+        curvature2 += (4*(up-2*base+down)/span**2)**2
+    return np.sqrt(gradient2), np.sqrt(curvature2)
+
+
 def evaluation_set(surface, n=65536, band=.06, peak=2.):
     if n < 4096 or n & (n-1):
         raise ValueError("test size must be a power of two >= 4096")
     x = qmc.Sobol(surface.dim, scramble=True, seed=91479).random_base2(n.bit_length()-1)
     y = surface(x)
+    variation, curvature = truth_variation(surface, x)
     return dict(x=x, y=y, scale=float(np.ptp(y)), band=surface.distance(x) < band,
-                peak=surface.peak_distance(x) < peak, region=surface.region(x))
+                peak=surface.peak_distance(x) < peak, region=surface.region(x),
+                variation=variation, curvature=curvature)
 
 
-def score(surface, observations, test):
-    yhat = reconstruct(observations.x, observations.y, test["x"])
+def score(surface, observations, test, targets=None, observed_variation=False):
+    """Fit-free spine first, reconstruction-based errors second.
+
+    `targets` are the holistic tolerances for *this* input dimension. They are
+    deliberately not defaulted: the 2D values were calibrated against a regular
+    grid at N=128 in two dimensions and carry no meaning elsewhere. Passing None
+    reports every component and marks the holistic score uncalibrated rather
+    than silently reusing a foreign tolerance.
+
+    The reconstruction-based family below uses the common thin-plate-spline RBF,
+    which is demoted to a secondary cross-check: its normalized error rises with
+    budget on concentrated designs (`5d-m1-p1-anis`, 0.1213 -> 0.2887 between
+    N=218 and N=512). Read `error` and its relatives as dimension-local.
+    """
     scale, truth = test["scale"], test["y"]
-    out = dict(n=len(observations.x), n_requests=observations.requests, scale=scale,
-               error=rmse(yhat, truth, scale),
+    observed = None
+    if observed_variation:
+        observed = knn_variation(observations.x, observations.y, test["x"])
+    out = dict(n=len(observations.x), n_requests=observations.requests, scale=scale)
+    out.update(fit_free_scores(observations.x, test["x"], test["variation"], scale,
+                               curvature=test["curvature"], observed=observed))
+
+    yhat = reconstruct(observations.x, observations.y, test["x"])
+    absolute = np.abs(yhat-truth)/scale
+    out.update(reconstruction="thin-plate-spline-rbf", reconstruction_role="secondary",
+               error=rmse(yhat, truth, scale), nmae=float(np.mean(absolute)),
+               p95_error=float(np.quantile(absolute, .95)),
                band_error=rmse(yhat[test["band"]], truth[test["band"]], scale) if test["band"].any() else None,
-               peak_error=rmse(yhat[test["peak"]], truth[test["peak"]], scale))
+               band_nmae=float(np.mean(absolute[test["band"]])) if test["band"].any() else None,
+               peak_error=rmse(yhat[test["peak"]], truth[test["peak"]], scale),
+               peak_nmae=float(np.mean(absolute[test["peak"]])))
     for m in range(len(surface.normals)):
         mask = test["region"] == m
         out[f"mode{m}_error"] = rmse(yhat[mask], truth[mask], scale)
+        out[f"mode{m}_nmae"] = float(np.mean(absolute[mask]))
+
+    out.update(holistic_error=None, holistic_driver=None, holistic_targets=None,
+               holistic_uncalibrated=True)
+    if targets is not None:
+        missing = [name for name in targets if out.get(name) is None]
+        if missing:
+            raise ValueError(f"holistic targets name unavailable scores: {missing}")
+        ratios = {name: out[name]/limit for name, limit in targets.items()}
+        out.update(holistic_error=float(max(ratios.values())),
+                   holistic_driver=max(ratios, key=ratios.get),
+                   holistic_targets=dict(targets), holistic_uncalibrated=False)
     return out

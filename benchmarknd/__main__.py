@@ -19,7 +19,13 @@ from .cases import CASES
 from .core import SurfaceND, Observations, evaluation_set, score
 from .strategies import ARMS, run_arm
 
-DEFAULT_ARMS = ("space-filling", "gpr-var", "gpr-grad", "gpr-u50-g50", "gpr-u70-g30", "gpr-u30-g70", "moe")
+# The high-dimensional field. Tetrahedral refinement and the dyadic grid do not
+# appear here and cannot: both are Delaunay-based, so the comparable arm set is
+# genuinely smaller above three dimensions. Declared rather than discovered in
+# the figures.
+DEFAULT_ARMS = ("space-filling", "gpr-var", "gpr-grad", "gpr-u50-g50", "gpr-u70-g30",
+                "gpr-u30-g70", "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend",
+                "vwrs", "vurs", "moe")
 
 
 def checkpoints(start, budget, count=10):

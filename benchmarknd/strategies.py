@@ -16,11 +16,23 @@ from sklearn.gaussian_process.kernels import ConstantKernel, Matern
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import PolynomialFeatures
 
+from resolution import knn_variation
+from resolution.variation import stencil_size
+
 # GP-uncertainty share of the blended acquisition; the rest weights the
 # gradient-weighted merit. The three ratios are the 2-D sweep winners.
 GP_BLENDS = {"gpr-u50-g50": .5, "gpr-u70-g30": .7, "gpr-u30-g70": .3}
 
-ARMS = ("space-filling", "gpr-var", "gpr-grad", "moe", "sglib", "sgpp") + tuple(GP_BLENDS)
+ARMS = (("space-filling", "gpr-var", "gpr-grad", "moe", "sglib", "sgpp",
+         "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend", "vwrs", "vurs")
+        + tuple(GP_BLENDS))
+RUNNABLE_ARMS = tuple(arm for arm in ARMS if arm != "sgpp")
+
+# VWRS/VURS acquisition weights, matching the preregistered 2D and 3D defaults:
+# VWRS splits coverage and variation evenly, VURS adds GP uncertainty in equal
+# thirds. Fixed baselines, not tuned winners.
+VWRS_WEIGHTS = dict(coverage=.5, variation=.5, uncertainty=0.)
+VURS_WEIGHTS = dict(coverage=1/3, variation=1/3, uncertainty=1/3)
 
 
 def candidate_count(dim):
@@ -36,9 +48,9 @@ def duplicate_radius(dim, n):
     return .1*n**(-1/dim)
 
 
-def fit_gp(obs, seed):
+def fit_gp(obs, seed, nu=1.5):
     gp = GaussianProcessRegressor(
-        kernel=ConstantKernel(1., (1e-3, 1e3))*Matern([.3]*obs.dim, (1e-2, 1e2), nu=1.5),
+        kernel=ConstantKernel(1., (1e-3, 1e3))*Matern([.3]*obs.dim, (1e-2, 1e2), nu=nu),
         alpha=1e-8, normalize_y=True, random_state=seed, n_restarts_optimizer=1)
     with warnings.catch_warnings(record=True) as messages:
         warnings.simplefilter("always", ConvergenceWarning)
@@ -68,14 +80,14 @@ def space_filling(obs, seed):
     return None, dict(pool=candidate_count(obs.dim))
 
 
-def gpr(obs, seed, gradient=False, blend=None):
+def gpr(obs, seed, gradient=False, blend=None, nu=1.5):
     """GP posterior standard deviation, optionally weighted by predicted gradient."""
     if blend is not None and not 0 <= blend <= 1:
         raise ValueError("uncertainty share must be between zero and one")
     rng = np.random.default_rng(seed)
     warning_count = 0
     while obs.remaining:
-        gp, count = fit_gp(obs, seed)
+        gp, count = fit_gp(obs, seed, nu)
         warning_count += count
         candidates = sobol_candidates(rng, obs.dim, candidate_count(obs.dim))
         nearest = cKDTree(obs.x).query(candidates)[0]
@@ -93,11 +105,52 @@ def gpr(obs, seed, gradient=False, blend=None):
                 merit = normalized_blend(merit, sd, 1-blend)
         merit[nearest < duplicate_radius(obs.dim, len(obs.x))] = -np.inf
         obs(candidates[int(np.argmax(merit))])
-    gp, count = fit_gp(obs, seed)
+    gp, count = fit_gp(obs, seed, nu)
     return gp.predict, dict(fit_warnings=warning_count+count, kernel=str(gp.kernel_),
-                            candidates=candidate_count(obs.dim),
+                            matern_nu=nu, candidates=candidate_count(obs.dim),
                             acquisition_weights=None if blend is None else
                             {"gpr-grad": 1-blend, "gpr-var": blend})
+
+
+def resolution_sampling(obs, seed, uncertainty=False, mode="curvature"):
+    """VWRS and VURS with a dimension-free variation estimator.
+
+    The 2D and 3D implementations weight fill distance by an observed Delaunay
+    simplex gradient. Delaunay does not survive these dimensions, so the
+    estimator is replaced by the shared k-nearest-neighbour weighted
+    least-squares fit while the acquisition rule itself is unchanged:
+
+        A(x) = lc*h~(x) + lv*q~(x) [+ lu*sigma~(x)]
+
+    Normalization is by candidate-cloud maximum, matching the 2D and 3D arms,
+    so the fixed weights keep their preregistered meaning.
+    """
+    weights = VURS_WEIGHTS if uncertainty else VWRS_WEIGHTS
+    rng = np.random.default_rng(seed)
+    warning_count = 0
+    while obs.remaining:
+        candidates = sobol_candidates(rng, obs.dim, candidate_count(obs.dim))
+        spacing = cKDTree(obs.x).query(candidates)[0]
+        local = knn_variation(obs.x, obs.y, candidates)
+        variation = spacing*local.indicator(spacing, mode)
+        merit = (weights["coverage"]*spacing/max(float(spacing.max()), 1e-12)
+                 + weights["variation"]*variation/max(float(variation.max()), 1e-12))
+        if uncertainty:
+            gp, count = fit_gp(obs, seed, nu=.5)
+            warning_count += count
+            sd = gp.predict(candidates, return_std=True)[1]
+            merit = merit + weights["uncertainty"]*sd/max(float(sd.max()), 1e-12)
+        merit[spacing < duplicate_radius(obs.dim, len(obs.x))] = -np.inf
+        obs(candidates[int(np.argmax(merit))])
+    metadata = dict(acquisition_weights=dict(weights), variation_mode=mode,
+                    variation="fill distance times knn weighted-least-squares "
+                              "local-linear residual curvature",
+                    stencil=stencil_size(obs.dim), candidates=candidate_count(obs.dim))
+    if uncertainty:
+        gp, count = fit_gp(obs, seed, nu=.5)
+        metadata.update(fit_warnings=warning_count+count, kernel=str(gp.kernel_), matern_nu=.5)
+        return gp.predict, metadata
+    return None, metadata
 
 
 def mixture(obs, seed):
@@ -175,6 +228,11 @@ def run_arm(name, obs, seed):
         return mixture(obs, seed)
     if name in ("gpr-var", "gpr-grad") or name in GP_BLENDS:
         return gpr(obs, seed, gradient=name == "gpr-grad", blend=GP_BLENDS.get(name))
+    if name in ("gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend"):
+        return gpr(obs, seed, gradient=name == "gpr-m05-grad",
+                   blend=.5 if name == "gpr-m05-blend" else None, nu=.5)
+    if name in ("vwrs", "vurs"):
+        return resolution_sampling(obs, seed, uncertainty=name == "vurs")
     if name == "sglib":
         from arms.sglib_arm import SgLibArm
         arm = SgLibArm(tol=0., max_level=20, budget_driven=True, nan_policy="error")
