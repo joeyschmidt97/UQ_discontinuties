@@ -23,6 +23,21 @@ must not be merged with the legacy Delaunay/RBF leaderboard. Test data never
 participate in acquisition. This frozen-pool runner does not yet run sparse-grid,
 VWRS or VURS arms.
 
+## Complete conditional 3D pilot
+
+Run both frozen 50/50 gradient–uncertainty GP configurations across all eight
+ITG–TEM/ITG–KBM hard/soft gamma/omega slices, then render the reference planes
+and scores:
+
+```sh
+python -m scripts.run_ionut_3d_suite --output results/ionut-3d/runs --budget 256 --workers 4
+python -m scripts.render_ionut_3d_report --data data/3d --results results/ionut-3d/runs --output results/ionut-3d
+```
+
+The result reports NRMSE, NMAE, normalized P95 error, branch-transition NRMSE,
+high-response NRMSE and per-dominant-branch NRMSE on the frozen reference set.
+It remains a two-model GP pilot rather than a general 3D sampler leaderboard.
+
 Matern nu=0.5 is a rough continuous kernel, not a jump model. Comparing it on
 these kinked cases is a first test; actual discontinuity families can be added
 as separately named generators with their own manifests.

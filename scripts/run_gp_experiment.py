@@ -11,6 +11,36 @@ from threadpoolctl import threadpool_limits
 from scripts.datasets import load_dataset
 
 
+def score_prediction(error, evaluation, scale):
+    """Common frozen-reference scores; no reconstruction surface is introduced."""
+    absolute = np.abs(error)
+    result = dict(
+        nmae=float(np.mean(absolute) / scale) if scale > 0 else None,
+        normalized_p95=float(np.quantile(absolute, .95) / scale) if scale > 0 else None,
+    )
+    if "G" in evaluation and evaluation["G"].ndim == 2 and evaluation["G"].shape[1] >= 2:
+        gap = np.abs(evaluation["G"][:, 0] - evaluation["G"][:, 1])
+        branch_scale = float(np.ptp(evaluation["G"]))
+        threshold = .05 * branch_scale
+        transition = gap <= threshold
+        result["transition_definition"] = "abs(branch-growth gap) <= 0.05 * pooled branch-growth range"
+        result["transition_count"] = int(transition.sum())
+        result["transition_normalized_rmse"] = (
+            float(np.sqrt(np.mean(error[transition] ** 2)) / scale)
+            if scale > 0 and transition.any() else None)
+        labels = np.argmax(evaluation["G"], axis=1)
+        result["branch_normalized_rmse"] = [
+            float(np.sqrt(np.mean(error[labels == index] ** 2)) / scale)
+            if scale > 0 and np.any(labels == index) else None
+            for index in range(evaluation["G"].shape[1])
+        ]
+    high = evaluation["y"] >= np.quantile(evaluation["y"], .9)
+    result["high_response_definition"] = "top 10% of frozen reference responses"
+    result["high_response_normalized_rmse"] = (
+        float(np.sqrt(np.mean(error[high] ** 2)) / scale) if scale > 0 and high.any() else None)
+    return result
+
+
 def _gradient_norm(gp, candidates, h=1e-3):
     grad2 = np.zeros(len(candidates))
     for axis in range(candidates.shape[1]):
@@ -48,6 +78,7 @@ def run(dataset, budget, policy, nu, beta=2., seed=0, uncertainty_weight=.5):
                 error = gp.predict(evaluation["x"])-evaluation["y"]
                 row = dict(n=len(selected), rmse=float(np.sqrt(np.mean(error**2))))
                 row["normalized_rmse"] = row["rmse"]/manifest["scale"] if manifest["scale"] > 0 else None
+                row.update(score_prediction(error, evaluation, manifest["scale"]))
                 for name in ("band", "peak"):
                     mask = evaluation[name]
                     row[name+"_rmse"] = float(np.sqrt(np.mean(error[mask]**2))) if mask.any() else None

@@ -4,7 +4,7 @@ This directory contains versioned data arrays, manifests and data documentation.
 
 - `2d/`, `5d/`, `8d/`: existing affine-envelope/Gaussian-peak synthetic cases.
 - `6d/`: Ionut Farcas's phenomenological microinstability proxies at their native dimension.
-- Optional generated `3d/`: declared conditional slices of the native ITG–TEM and ITG–KBM formulas.
+- `3d/`: declared conditional slices of the native ITG–TEM and ITG–KBM formulas.
 - Each case contains `seed-0/pool.npz`, `evaluation.npz`, and `manifest.json`.
 - All generated arrays and manifests are tracked in Git. Generators refuse overwrites.
 
@@ -55,6 +55,10 @@ gamma/omega slices for two transition families. ITG–TEM varies
 the expanded native 6D coordinates so equality to the upstream formula is
 testable. These are conditional views, not claims of three-dimensional intrinsic
 structure and not substitutes for the tracked native 6D archives.
+
+The tracked seed-0 archives contain all eight hard/soft gamma/omega slices at
+4,096 pool points and 65,536 independent reference points. Their local GP pilot
+and orthogonal-slice report are stored in `results/ionut-3d-local-2026-09-19/`.
 
 ## Array and provenance format
 

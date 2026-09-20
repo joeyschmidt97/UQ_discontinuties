@@ -4,6 +4,7 @@ from scripts.generate_ionut_data import CASES,generate,values
 from scripts.datasets import load_dataset,surface_for
 from scripts import ionut_proxies as proxy
 from scripts.generate_ionut_slices import CASES as SLICE_CASES, expand, generate as generate_slice
+from scripts.run_gp_experiment import run
 
 @pytest.mark.parametrize('case',CASES)
 def test_proxy_archives_match_continuous_values(tmp_path,case):
@@ -36,3 +37,14 @@ def test_3d_slices_match_the_declared_native_6d_condition(tmp_path, case):
     native = values(meta['native_case'], test['native_x'])
     assert np.array_equal(native['y'], test['y'])
     assert not set(map(tuple, pool['x'])) & set(map(tuple, test['x']))
+
+
+def test_3d_gp_scores_transition_tail_and_branches(tmp_path):
+    case = 'ionut-itg-tem-3d-argmax-gamma'
+    path = generate_slice(tmp_path, case, 16, 64)
+    row = run(path, 7, 'blend', .5)['rows'][-1]
+    for key in ('normalized_rmse', 'nmae', 'normalized_p95',
+                'transition_normalized_rmse', 'high_response_normalized_rmse'):
+        assert np.isfinite(row[key])
+    assert row['transition_count'] > 0
+    assert len(row['branch_normalized_rmse']) == 2

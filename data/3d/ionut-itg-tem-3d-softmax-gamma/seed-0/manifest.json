@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "family": "ionut-phenomenological-microinstability-3d-slice",
+  "dimension": 3,
+  "case": "ionut-itg-tem-3d-softmax-gamma",
+  "surface_seed": 0,
+  "bounds": [
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ],
+    [
+      0.0,
+      1.0
+    ]
+  ],
+  "measure": "uniform conditional 3D slice",
+  "pool_size": 4096,
+  "test_size": 65536,
+  "pool_seed": 1729,
+  "test_seed": 91479,
+  "scale": 0.3474163703444092,
+  "numpy": "1.26.4",
+  "scipy": "1.17.1",
+  "created_utc": "2026-09-20T04:39:08.995548+00:00",
+  "upstream_commit": "13f87b95f90be9dbb5942e317739bb15a1918e0e",
+  "upstream_repository": "https://github.com/ionutfarcas/UQ_discontinuties",
+  "source_sha256": {
+    "scripts/ionut_proxies.py": "17ae68e7f801f9ba8b846e58078551ab05706ab4cb7437b4feb7eef85ccdd2ce",
+    "scripts/generate_ionut_data.py": "e0bf6b6924a8267c90e04e1789aa17406cccc80e33052fa68f0b36de0477bf4e",
+    "scripts/generate_ionut_slices.py": "819cfebfd44f6e8364bc37a7f25963d57fb5c7f577d4731b5a5492c82387f8cf",
+    "scripts/datasets.py": "b6b1bf708496011c63e8f4957ce1e91f93d8de42aa4afd3626c106c84d465a1c"
+  },
+  "native_dimension": 6,
+  "native_case": "ionut-itg-tem-softmax-gamma",
+  "columns": [
+    "RLTi",
+    "RLTe",
+    "nu"
+  ],
+  "active_native_indices": [
+    0,
+    1,
+    3
+  ],
+  "fixed_native_coordinates": [
+    0.5,
+    0.5,
+    0.5,
+    0.0,
+    0.0,
+    0.5
+  ],
+  "mode": "softmax",
+  "output": "gamma",
+  "branches": [
+    "ITG",
+    "TEM"
+  ],
+  "diagnostics": {
+    "band": "undefined; empty mask",
+    "peak": "undefined; empty mask"
+  },
+  "note": "Conditional 3D slice of the unchanged native 6D proxy; not a learned dimensional reduction.",
+  "sha256": {
+    "evaluation.npz": "f2a8e30a22ca5c08f33c8a6b180300681ec78ceb96263bafb05e9d45a6a15a24",
+    "pool.npz": "5857d567bde8362b13978cd6e0f3846d7485bdd68580170c7f1c814306670166"
+  }
+}
