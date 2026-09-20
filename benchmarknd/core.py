@@ -38,6 +38,15 @@ PORTED_TOLERANCES = {
 }
 CALIBRATION_BUDGET = {5: 512}
 
+# Set while running a reference-arm calibration, which must produce the very
+# numbers the tolerances are read from and therefore cannot require them.
+_CALIBRATING = False
+
+
+def calibrating(state=True):
+    global _CALIBRATING
+    _CALIBRATING = bool(state)
+
 NARROW, WIDE = .06, .5          # peak sigma at full strength and at weak strength
 ENVELOPE, BASE = .65, .15       # affine-envelope and base-slope amplitudes
 AMPLITUDES = (.9, .7, .8, .6)
@@ -287,12 +296,16 @@ def truth_variation(surface, x, step=1e-4):
 def evaluation_set(surface, n=65536, band=.06, peak=2.):
     if n < 4096 or n & (n-1):
         raise ValueError("test size must be a power of two >= 4096")
+    # The Ionut proxies measure the band mask as a normalized branch-growth gap
+    # rather than a geometric distance to a fold, so they declare their own
+    # threshold instead of inheriting the synthetic surfaces' 0.06.
+    band = getattr(surface, "band_threshold", band)
     x = qmc.Sobol(surface.dim, scramble=True, seed=91479).random_base2(n.bit_length()-1)
     y = surface(x)
     variation, curvature = truth_variation(surface, x)
     return dict(x=x, y=y, scale=float(np.ptp(y)), band=surface.distance(x) < band,
                 peak=surface.peak_distance(x) < peak, region=surface.region(x),
-                variation=variation, curvature=curvature)
+                n_regions=len(surface.normals), variation=variation, curvature=curvature)
 
 
 def score(surface, observations, test, targets=None, secondary_targets=None,
@@ -331,8 +344,11 @@ def score(surface, observations, test, targets=None, secondary_targets=None,
                band_nmae=float(np.mean(absolute[test["band"]])) if test["band"].any() else None,
                peak_error=rmse(yhat[test["peak"]], truth[test["peak"]], scale),
                peak_nmae=float(np.mean(absolute[test["peak"]])))
-    for m in range(len(surface.normals)):
+    for m in range(test["n_regions"]):
         mask = test["region"] == m
+        if not mask.any():
+            out[f"mode{m}_error"] = out[f"mode{m}_nmae"] = None
+            continue
         out[f"mode{m}_error"] = rmse(yhat[mask], truth[mask], scale)
         out[f"mode{m}_nmae"] = float(np.mean(absolute[mask]))
 
@@ -361,11 +377,13 @@ def tolerances_for(dim, band_available=True):
     `band_available` drops the fold-band term for the one-mode controls, which
     have no fold for it to measure.
     """
-    if dim not in SPINE_TOLERANCES:
+    if dim not in SPINE_TOLERANCES and not _CALIBRATING:
         raise ValueError(
             f"no calibrated tolerances for d={dim}; run the reference-arm "
             f"calibration first, as was done for d=5 at budget "
             f"{CALIBRATION_BUDGET.get(5)}")
+    if dim not in SPINE_TOLERANCES:
+        return None, None
     ported = dict(PORTED_TOLERANCES[dim])
     if not band_available:
         ported.pop("band_nmae", None)
