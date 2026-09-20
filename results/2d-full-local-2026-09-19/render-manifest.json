@@ -1,0 +1,15 @@
+{
+  "renderer_sha256": "4862107cdde33f7911ab4aee0aa88075ac705089d4e5c393f47ddd0e84d1eb13",
+  "experiment_source_hash": "447df04ac5e0587bea07508a48d5277181f7172030af51978a9d008231d9ebb7",
+  "matplotlib": "3.11.1",
+  "figure_files": [
+    "01-manifold-reference.png",
+    "02-point-placement.png",
+    "03-error-versus-points.png",
+    "04-reconstruction-error-map.png",
+    "05-performance-scorecard.png",
+    "06-holistic-error-types.png"
+  ],
+  "snapshot_seed": 0,
+  "snapshot_cap": 256
+}
