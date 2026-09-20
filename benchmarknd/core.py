@@ -30,13 +30,22 @@ from .cases import CASES, strengths
 # by construction and its own optimum cannot serve as a bar any other method
 # could clear. All values are provisional normalized tolerances at the stated
 # budget, not fitted accuracy claims.
+#
+# d=6 is Ionut's native proxies, calibrated 2026-09-20 over all eight branch
+# cases. Note that `nonlinear_p95` is inert on the two argmax-frequency cases:
+# those responses are piecewise linear with a branch jump, so truth curvature
+# sits at numerical noise (P95 ~ 2.5e-8) away from a delta at the jump. The
+# term is retained because it is live on the six other cases, and the jump
+# difficulty is carried by the VWFD term instead.
 SPINE_TOLERANCES = {
     5: dict(vwfd_p95=.70, nonlinear_p95=2.50, fill_p95=.40),
+    6: dict(vwfd_p95=.75, nonlinear_p95=2.50, fill_p95=.55),
 }
 PORTED_TOLERANCES = {
     5: dict(nmae=.035, band_nmae=.035, p95_error=.13, vwfd_p95=.70),
+    6: dict(nmae=.080, band_nmae=.165, p95_error=.27, vwfd_p95=.75),
 }
-CALIBRATION_BUDGET = {5: 512}
+CALIBRATION_BUDGET = {5: 512, 6: 512}
 
 # Set while running a reference-arm calibration, which must produce the very
 # numbers the tolerances are read from and therefore cannot require them.
