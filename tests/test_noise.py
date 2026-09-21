@@ -128,3 +128,45 @@ def test_allocation_weight_is_negative_on_the_aleatoric_term():
     from benchmarknd.strategies import VURS_A_WEIGHTS
     assert VURS_A_WEIGHTS["aleatoric"] < 0
     assert sum(v for k, v in VURS_A_WEIGHTS.items() if k != "aleatoric") == pytest.approx(1.)
+
+
+@pytest.mark.parametrize("peak,max_zero_fraction", [(.05, .10), (.25, .35), (.60, .70)])
+def test_detectability_falls_with_noise_and_is_reported_not_hidden(peak, max_zero_fraction):
+    """Hard subtraction zeroes where no structure is detectable above the noise.
+
+    That is the correct statement, not a defect, but it has to stay bounded and
+    known: at a 60% relative spread most of the domain carries no usable
+    variation signal and VWRS necessarily falls back on its coverage term.
+    """
+    surface = NoisyIonutSurface(CASE, noise=TransitionNoise(peak=peak))
+    obs = NoisyObservations(surface, 150, 6, 0)
+    rng = np.random.default_rng(1)
+    while obs.remaining:
+        obs(rng.random((1, 6)))
+    probes = rng.random((1024, 6))
+    zeroed = (knn_variation(obs.x, obs.y, probes, noise=obs.sigma).curvature < 1e-12).mean()
+    assert zeroed <= max_zero_fraction
+
+
+def test_shrinkage_is_available_but_is_not_the_default():
+    """The default must be the estimator that actually suppresses pure noise."""
+    residual, noise = np.array([.1]), np.array([.1])
+    hard = denoise_residual(residual, noise, stencil=14, dim=6)
+    shrink = denoise_residual(residual, noise, stencil=14, dim=6, method="shrink")
+    assert hard < shrink                      # shrinkage leaves more noise behind
+    assert denoise_residual(residual, noise, stencil=14, dim=6) == hard
+    with pytest.raises(ValueError):
+        denoise_residual(residual, noise, stencil=14, dim=6, method="nonsense")
+
+
+def test_a_zero_deficit_makes_a_magnitude_comparison_meaningless():
+    """Why vurs-r cannot be evaluated in the high-noise regime.
+
+    Once the denoised deficit is zero, any positive replicate gain wins the
+    comparison regardless of whether replicating is actually worthwhile.
+    """
+    from benchmarknd.strategies import replicate_choice
+    surface = NoisyIonutSurface(CASE, noise=TransitionNoise(peak=.60))
+    obs = NoisyObservations(surface, 40, 6, 0)
+    assert replicate_choice(obs, 0.) is not None       # zero deficit: always replicate
+    assert replicate_choice(obs, 1e3) is None          # large deficit: never
