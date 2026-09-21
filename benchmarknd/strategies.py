@@ -24,8 +24,24 @@ from resolution.variation import stencil_size
 GP_BLENDS = {"gpr-u50-g50": .5, "gpr-u70-g30": .7, "gpr-u30-g70": .3}
 
 ARMS = (("space-filling", "gpr-var", "gpr-grad", "moe", "sglib", "sgpp",
-         "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend", "vwrs", "vurs")
+         "gpr-m05-var", "gpr-m05-grad", "gpr-m05-blend", "vwrs", "vurs",
+         "vwrs-n", "vurs-n", "vurs-a", "gpr-n", "vurs-r")
         + tuple(GP_BLENDS))
+
+# Arms that require an oracle reporting a spread per evaluation.
+NOISE_AWARE_ARMS = ("vwrs-n", "vurs-n", "vurs-a", "gpr-n", "vurs-r")
+
+# Most replicates one point may absorb. Without a cap a reducible-noise
+# rule can sink its whole budget into one location, which is a degenerate
+# answer rather than an interesting one.
+MAX_REPLICATES = 8
+
+# Allocation-aware weights. The negative term implements the proposal to
+# "identify difficult regions, sample them sparsely to limit compute drain,
+# and devote more effort to cleaner regions": resolution bought per paid
+# evaluation is worse where the reported spread is large, because the mean
+# only tightens as 1/sqrt(m).
+VURS_A_WEIGHTS = dict(coverage=1/3, variation=1/3, uncertainty=1/3, aleatoric=-1/3)
 RUNNABLE_ARMS = tuple(arm for arm in ARMS if arm != "sgpp")
 
 # VWRS/VURS acquisition weights, matching the preregistered 2D and 3D defaults:
@@ -48,10 +64,18 @@ def duplicate_radius(dim, n):
     return .1*n**(-1/dim)
 
 
-def fit_gp(obs, seed, nu=1.5):
+def fit_gp(obs, seed, nu=1.5, noise_aware=False):
+    # A heteroscedastic alpha is the honest way to tell the GP that a
+    # contested-region observation is worth less than a quiet-region one.
+    alpha = 1e-8
+    if noise_aware:
+        sigma = reported_noise(obs)
+        if sigma is None:
+            raise ValueError("a noise-aware GP needs an oracle that reports a spread")
+        alpha = np.maximum(sigma**2, 1e-12)
     gp = GaussianProcessRegressor(
         kernel=ConstantKernel(1., (1e-3, 1e3))*Matern([.3]*obs.dim, (1e-2, 1e2), nu=nu),
-        alpha=1e-8, normalize_y=True, random_state=seed, n_restarts_optimizer=1)
+        alpha=alpha, normalize_y=True, random_state=seed, n_restarts_optimizer=1)
     with warnings.catch_warnings(record=True) as messages:
         warnings.simplefilter("always", ConvergenceWarning)
         gp.fit(obs.x, obs.y)
@@ -80,14 +104,14 @@ def space_filling(obs, seed):
     return None, dict(pool=candidate_count(obs.dim))
 
 
-def gpr(obs, seed, gradient=False, blend=None, nu=1.5):
+def gpr(obs, seed, gradient=False, blend=None, nu=1.5, noise_aware=False):
     """GP posterior standard deviation, optionally weighted by predicted gradient."""
     if blend is not None and not 0 <= blend <= 1:
         raise ValueError("uncertainty share must be between zero and one")
     rng = np.random.default_rng(seed)
     warning_count = 0
     while obs.remaining:
-        gp, count = fit_gp(obs, seed, nu)
+        gp, count = fit_gp(obs, seed, nu, noise_aware)
         warning_count += count
         candidates = sobol_candidates(rng, obs.dim, candidate_count(obs.dim))
         nearest = cKDTree(obs.x).query(candidates)[0]
@@ -105,14 +129,63 @@ def gpr(obs, seed, gradient=False, blend=None, nu=1.5):
                 merit = normalized_blend(merit, sd, 1-blend)
         merit[nearest < duplicate_radius(obs.dim, len(obs.x))] = -np.inf
         obs(candidates[int(np.argmax(merit))])
-    gp, count = fit_gp(obs, seed, nu)
+    gp, count = fit_gp(obs, seed, nu, noise_aware)
     return gp.predict, dict(fit_warnings=warning_count+count, kernel=str(gp.kernel_),
                             matern_nu=nu, candidates=candidate_count(obs.dim),
                             acquisition_weights=None if blend is None else
                             {"gpr-grad": 1-blend, "gpr-var": blend})
 
 
-def resolution_sampling(obs, seed, uncertainty=False, mode="curvature"):
+def reported_noise(obs):
+    """The oracle's per-observation spread, or None for a clean oracle."""
+    return getattr(obs, "sigma", None)
+
+
+def candidate_noise(obs, candidates):
+    """Spread a candidate would report, read off the nearest observation.
+
+    A sampler only knows the reported spread where it has already paid, so
+    nearest-neighbour transfer is what it can honestly use -- no oracle peek.
+    """
+    sigma = reported_noise(obs)
+    if sigma is None:
+        return None
+    single = sigma*np.sqrt(obs.replicates)
+    return single[cKDTree(obs.x).query(candidates)[1]]
+
+
+def replicate_choice(obs, best_candidate_deficit):
+    """Whether re-measuring an existing point beats placing a new one.
+
+    Both sides are compared in response units, with no normalization, because
+    normalizing each side by its own maximum makes the best replicate score 1.0
+    by construction and the rule then always replicates.
+
+    A new point removes roughly the variation-weighted fill distance at the
+    best candidate: spacing times local slope, in response units. A replicate
+    removes the part of the reported spread that averaging buys, which for the
+    m-th draw is sigma*(1 - sqrt(m/(m+1))). When the spread is irreducible a
+    replicate removes nothing and this returns None every time -- that is the
+    regime where an uncertainty-hungry rule should be seen to waste budget, so
+    the rule must not quietly rescue itself.
+
+    Returns the index to re-measure, or None to place a new point.
+    """
+    sigma = reported_noise(obs)
+    if sigma is None or not getattr(obs.surface.noise, "reducible", True):
+        return None
+    counts = obs.replicates
+    eligible = counts < MAX_REPLICATES
+    if not eligible.any():
+        return None
+    gain = sigma*(1-np.sqrt(counts/(counts+1.)))
+    gain = np.where(eligible, gain, -np.inf)
+    best = int(np.argmax(gain))
+    return best if gain[best] > best_candidate_deficit else None
+
+
+def resolution_sampling(obs, seed, uncertainty=False, mode="curvature",
+                        noise_aware=False, allocation=False, replicate=False):
     """VWRS and VURS with a dimension-free variation estimator.
 
     The 2D and 3D implementations weight fill distance by an observed Delaunay
@@ -125,13 +198,17 @@ def resolution_sampling(obs, seed, uncertainty=False, mode="curvature"):
     Normalization is by candidate-cloud maximum, matching the 2D and 3D arms,
     so the fixed weights keep their preregistered meaning.
     """
-    weights = VURS_WEIGHTS if uncertainty else VWRS_WEIGHTS
+    weights = VURS_A_WEIGHTS if allocation else (VURS_WEIGHTS if uncertainty else VWRS_WEIGHTS)
+    if (noise_aware or allocation) and reported_noise(obs) is None:
+        raise ValueError("noise-aware placement needs an oracle that reports a spread")
     rng = np.random.default_rng(seed)
     warning_count = 0
+    replicated = 0
     while obs.remaining:
         candidates = sobol_candidates(rng, obs.dim, candidate_count(obs.dim))
         spacing = cKDTree(obs.x).query(candidates)[0]
-        local = knn_variation(obs.x, obs.y, candidates)
+        observed_noise = reported_noise(obs) if (noise_aware or allocation) else None
+        local = knn_variation(obs.x, obs.y, candidates, noise=observed_noise)
         variation = spacing*local.indicator(spacing, mode)
         merit = (weights["coverage"]*spacing/max(float(spacing.max()), 1e-12)
                  + weights["variation"]*variation/max(float(variation.max()), 1e-12))
@@ -140,9 +217,22 @@ def resolution_sampling(obs, seed, uncertainty=False, mode="curvature"):
             warning_count += count
             sd = gp.predict(candidates, return_std=True)[1]
             merit = merit + weights["uncertainty"]*sd/max(float(sd.max()), 1e-12)
+        if allocation:
+            aleatoric = candidate_noise(obs, candidates)
+            merit = merit + weights["aleatoric"]*aleatoric/max(float(aleatoric.max()), 1e-12)
         merit[spacing < duplicate_radius(obs.dim, len(obs.x))] = -np.inf
-        obs(candidates[int(np.argmax(merit))])
+        index = int(np.argmax(merit))
+        if replicate:
+            # The deficit the best new point would remove, in response units.
+            chosen = replicate_choice(obs, float(variation[index]))
+            if chosen is not None:
+                obs(obs.x[chosen][None, :])
+                replicated += 1
+                continue
+        obs(candidates[index])
     metadata = dict(acquisition_weights=dict(weights), variation_mode=mode,
+                    replicates_bought=replicated, max_replicates=MAX_REPLICATES,
+                    noise_aware=bool(noise_aware or allocation),
                     variation="fill distance times knn weighted-least-squares "
                               "local-linear residual curvature",
                     stencil=stencil_size(obs.dim), candidates=candidate_count(obs.dim))
@@ -233,6 +323,15 @@ def run_arm(name, obs, seed):
                    blend=.5 if name == "gpr-m05-blend" else None, nu=.5)
     if name in ("vwrs", "vurs"):
         return resolution_sampling(obs, seed, uncertainty=name == "vurs")
+    if name in ("vwrs-n", "vurs-n"):
+        return resolution_sampling(obs, seed, uncertainty=name == "vurs-n", noise_aware=True)
+    if name == "vurs-a":
+        return resolution_sampling(obs, seed, uncertainty=True, allocation=True)
+    if name == "vurs-r":
+        return resolution_sampling(obs, seed, uncertainty=True, noise_aware=True,
+                                   replicate=True)
+    if name == "gpr-n":
+        return gpr(obs, seed, blend=.5, noise_aware=True)
     if name == "sglib":
         from arms.sglib_arm import SgLibArm
         arm = SgLibArm(tol=0., max_level=20, budget_driven=True, nan_policy="error")

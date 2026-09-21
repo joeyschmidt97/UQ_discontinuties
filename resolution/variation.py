@@ -85,12 +85,18 @@ class LocalVariation:
         raise ValueError(mode)
 
 
-def knn_variation(x, y, query, k=None, labels=None, query_labels=None):
+def knn_variation(x, y, query, k=None, labels=None, query_labels=None, noise=None):
     """Fit one weighted local linear model per query point.
 
     `labels` restricts each stencil to observed points carrying the same label
     as the query. Used for truth-known scoring only; leave it None to let a
     stencil span a discontinuity and report it.
+
+    `noise` is the reported observation spread per observed point. When given,
+    the part of the residual that is only observation noise is removed, so a
+    noisy flat neighbourhood stops looking curved. Without it, a sampler run
+    against a noisy oracle reads its own noise as structure and refines the
+    loudest region rather than the most structured one.
     """
     x = np.asarray(x, float)
     y = np.asarray(y, float)
@@ -102,8 +108,12 @@ def knn_variation(x, y, query, k=None, labels=None, query_labels=None):
     if len(x) < dim + 2:
         raise ValueError("too few observations for a local linear fit with a residual")
 
+    if noise is not None:
+        noise = np.asarray(noise, float)
+        if noise.shape != (len(x),):
+            raise ValueError("one reported spread per observation required")
     if labels is None:
-        return _fit(x, y, query, min(k, len(x)), dim)
+        return _fit(x, y, query, min(k, len(x)), dim, noise)
 
     labels = np.asarray(labels)
     if labels.shape != (len(x),):
@@ -121,10 +131,11 @@ def knn_variation(x, y, query, k=None, labels=None, query_labels=None):
         # A branch with too few samples cannot support a restricted fit; fall
         # back to the unrestricted stencil rather than inventing a value.
         if members.sum() < dim + 2:
-            parts[label] = _fit(x, y, query[rows], min(k, len(x)), dim)
+            parts[label] = _fit(x, y, query[rows], min(k, len(x)), dim, noise)
         else:
             parts[label] = _fit(x[members], y[members], query[rows],
-                                min(k, int(members.sum())), dim)
+                                min(k, int(members.sum())), dim,
+                                None if noise is None else noise[members])
     out = {}
     for field in ("gradient", "curvature", "disagreement", "residual", "radius"):
         merged = np.empty(len(query))
@@ -134,7 +145,7 @@ def knn_variation(x, y, query, k=None, labels=None, query_labels=None):
     return LocalVariation(**out)
 
 
-def _fit(x, y, query, k, dim):
+def _fit(x, y, query, k, dim, noise=None):
     if not len(query):
         empty = np.empty(0)
         return LocalVariation(empty, empty, empty, empty, empty)
@@ -160,6 +171,10 @@ def _fit(x, y, query, k, dim):
     weight_sum = weights.sum(axis=1)
     residual = np.sqrt(np.einsum("mk,mk->m", weights, (values - prediction)**2)/weight_sum)
     gradient = np.linalg.norm(coefficients[:, 1:], axis=1)
+    if noise is not None:
+        from .noise import denoise_residual
+        stencil_noise = np.sqrt(np.einsum("mk,mk->m", weights, noise[index]**2)/weight_sum)
+        residual = denoise_residual(residual, stencil_noise, k, dim)
     curvature = 2*residual/radius**2
 
     # Neighbour disagreement reuses the same fits: each observed point's own
