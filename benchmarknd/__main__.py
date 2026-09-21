@@ -6,6 +6,7 @@ about 32 minutes per trajectory when every N is scored and 19 seconds at ten
 checkpoints, while the trajectory itself is unchanged either way.
 """
 import argparse
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import hashlib
 import importlib.metadata
 import json
@@ -13,28 +14,15 @@ import pathlib
 import platform
 import subprocess
 import time
-import numpy as np
 from threadpoolctl import threadpool_limits
 from .cases import CASES
-from .ionut import CASES as IONUT_CASES, IonutSurface
-from .core import (SurfaceND, Observations, calibrating, evaluation_set, score,
-                   tolerances_for)
-from .strategies import ARMS, run_arm
+from .ionut import CASES as IONUT_CASES
+from .core import calibrating
+from .strategies import ARMS
+from .worker import case_dim, execute
 
 ALL_CASES = list(CASES) + list(IONUT_CASES)
 
-
-def case_dim(case):
-    return CASES[case]["dim"] if case in CASES else IonutSurface.dim
-
-
-def build_surface(case, seed):
-    """The synthetic surfaces carry a geometry seed; the proxies do not.
-
-    Ionut's formulas are fixed, so `seed` varies the acquisition only and the
-    surface -- and therefore the whole evaluation set -- is shared across seeds.
-    """
-    return SurfaceND(case, seed) if case in CASES else IonutSurface(case)
 
 # The high-dimensional field. Tetrahedral refinement and the dyadic grid do not
 # appear here and cannot: both are Delaunay-based, so the comparable arm set is
@@ -45,10 +33,20 @@ DEFAULT_ARMS = ("space-filling", "gpr-var", "gpr-grad", "gpr-u50-g50", "gpr-u70-
                 "vwrs", "vurs", "moe")
 
 
-def checkpoints(start, budget, count=10):
-    """Log-spaced integer point counts, always including the final budget."""
-    raw = np.unique(np.round(np.geomspace(start, budget, count)).astype(int))
-    return [int(n) for n in raw if start <= n <= budget]
+def _record(payload, result_path, rows):
+    """Append one finished trajectory and checkpoint the file immediately."""
+    payload["rows"].extend(rows)
+    save(result_path, payload)
+    last = rows[-1]
+    if last["status"] == "ok":
+        holistic = ("uncalibrated" if last["holistic_error"] is None
+                    else f"{last['holistic_error']:.3f} ({last['holistic_driver']})")
+        detail = (f"H {holistic} vwfd95 {last['vwfd_p95']:.4f}"
+                  f" nonlin95 {last['nonlinear_p95']:.3f} in {last['seconds']/60:.1f} min")
+    else:
+        detail = f"{last['status']}: {last['reason']}"
+    print(f"[{time.strftime('%H:%M:%S')}] {last['case']} seed={last['seed']} "
+          f"{last['arm']} {detail}", flush=True)
 
 
 def save(path, payload):
@@ -68,6 +66,8 @@ def main():
     parser.add_argument("--checkpoints", type=int, default=10)
     parser.add_argument("--test-size", type=int, default=65536)
     parser.add_argument("--output", type=pathlib.Path, required=True)
+    parser.add_argument("--workers", type=int, default=1,
+                        help="parallel trajectories; 1 keeps the original serial path")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--calibrate", action="store_true",
                         help="reference-arm run for a dimension with no tolerances yet; "
@@ -111,73 +111,23 @@ def main():
     # Only a completed trajectory counts as done; a failed one is retried.
     done = {(r["case"], r["seed"], r["arm"]) for r in payload["rows"]
             if r["status"] == "ok" and r["budget"] == r["n"]}
-    with threadpool_limits(limits=1):
-        for case in args.cases:
-            dim = case_dim(case)
-            budget = budgets[dim]
-            shared_test = None
-            for seed in args.seeds:
-                surface = build_surface(case, seed)
-                if case in CASES:
-                    test = evaluation_set(surface, args.test_size)
-                else:
-                    # Seed-independent surface: build the reference set once
-                    # rather than paying 2*dim oracle passes per seed.
-                    shared_test = shared_test or evaluation_set(surface, args.test_size)
-                    test = shared_test
-                # Spine tolerances are primary above three dimensions; the
-                # ported four-term shape rides along labelled. Both are
-                # preregistered per dimension, so an uncalibrated dimension
-                # stops the run here rather than producing an unreadable H.
-                spine, ported = tolerances_for(dim, band_available=bool(test["band"].any()))
-                for arm in args.arms:
-                    if (case, seed, arm) in done:
-                        continue
-                    start = time.perf_counter()
-                    obs = Observations(surface, budget, dim, seed)
-                    trial = dict(case=case, dim=dim, seed=seed, arm=arm)
-                    print(f"[{time.strftime('%H:%M:%S')}] start {case} seed={seed} {arm} budget={budget}", flush=True)
-                    try:
-                        predict, metadata = run_arm(arm, obs, seed)
-                        if len(obs.x) != budget:
-                            raise RuntimeError("strategy failed to spend the exact budget")
-                        acquisition = time.perf_counter()-start
-                        all_x, all_y = obs.x, obs.y
-                        lookup = {Observations.key(x): y for x, y in zip(all_x, all_y)}
-                        shared = all_x[:2*dim+1]
-                        prefix = Observations(lambda x: [lookup[Observations.key(p)] for p in x],
-                                              budget, dim, seed, shared=shared)
-                        rows = []
-                        for n in checkpoints(len(prefix.x), budget, args.checkpoints):
-                            while len(prefix.x) < n:
-                                prefix(all_x[len(prefix.x)])
-                            row = dict(**trial, budget=budget, status="ok")
-                            row.update(score(surface, prefix, test,
-                                             targets=spine, secondary_targets=ported))
-                            row["x"] = prefix.x.tolist() if n == budget else None
-                            row["y"] = prefix.y.tolist() if n == budget else None
-                            if n == budget:
-                                row["metadata"] = metadata
-                                row["acquisition_seconds"] = acquisition
-                                row["seconds"] = time.perf_counter()-start
-                            rows.append(row)
-                            holistic = ("uncalibrated" if row["holistic_error"] is None
-                                        else f"{row['holistic_error']:.3f} ({row['holistic_driver']})")
-                            print(f"    N={n:5} H {holistic} vwfd95 {row['vwfd_p95']:.4f}"
-                                  f" nonlin95 {row['nonlinear_p95']:.3f}"
-                                  f" fill95 {row['fill_p95']:.4f} rbf {row['error']:.4f}", flush=True)
-                        payload["rows"].extend(rows)
-                        final = rows[-1]
-                        summary = ("uncalibrated" if final["holistic_error"] is None
-                                   else f"{final['holistic_error']:.3f}")
-                        print(f"[{time.strftime('%H:%M:%S')}] done  {case} seed={seed} {arm} "
-                              f"final H {summary} in {final['seconds']/60:.1f} min", flush=True)
-                    except Exception as exc:
-                        payload["rows"].append(dict(**trial, budget=budget, n=len(obs.x), status="failed",
-                                                    reason=f"{type(exc).__name__}: {exc}"))
-                        print(f"[{time.strftime('%H:%M:%S')}] FAILED {case} seed={seed} {arm}: "
-                              f"{type(exc).__name__}: {exc}", flush=True)
-                    save(result_path, payload)
+    # Group by case so each worker's evaluation-set cache hits: building one
+    # costs 2*dim oracle passes over the reference cloud.
+    tasks = [(case, seed, arm, budgets[case_dim(case)], args.test_size, args.checkpoints)
+             for case in args.cases for seed in args.seeds for arm in args.arms
+             if (case, seed, arm) not in done]
+    print(f"{len(tasks)} trajectories to run on {args.workers} workers "
+          f"({len(done)} already complete)", flush=True)
+    if args.workers <= 1:
+        with threadpool_limits(limits=1):
+            for task in tasks:
+                _record(payload, result_path, execute(task))
+    else:
+        with ProcessPoolExecutor(max_workers=args.workers) as pool:
+            futures = [pool.submit(execute, task) for task in tasks]
+            for future in as_completed(futures):
+                _record(payload, result_path, future.result())
+
     failures = [r for r in payload["rows"] if r["status"] != "ok"]
     print(f"saved {result_path} ({len(payload['rows'])} rows, {len(failures)} failures)", flush=True)
     if failures:
