@@ -11,13 +11,21 @@ Ground rules, from the VWRS/VURS note's sampling-space display section:
   (trustworthiness) reported, before any island is read as structure.
 
 What is embedded. A uniform 6D input box embeds as a featureless blob, so the
-inputs alone cannot produce islands. Islands appear only when the embedding
-also sees the response. Features are therefore the scaled inputs plus the
-standardized response block -- growth rate, frequency and both branch growth
-rates -- multiplied by a response weight w:
+inputs alone cannot produce islands. Islands can appear only when the
+embedding also sees the response. Features are the scaled inputs plus a
+standardized response block multiplied by a response weight w:
 
     w = 0    pure parameter space
-    w > 0    the response pulls points of one branch together
+    w > 0    the response may pull points of one branch together
+
+The displayed response block is (gamma, omega), what a GENE run reports. A
+second block adding both branch growth rates is swept but never displayed:
+the branch label is their argmax, so that view is circular by construction.
+
+Whether islands form depends on the pair. In ITG-TEM the two branches rotate
+in opposite directions, so omega's sign alone separates them; in ITG-KBM both
+rotate negative and that cue is absent, which is the harder and more
+realistic case.
 
 The branch label (argmax of the branch growth rates) is ground truth here,
 which is the point of running this on a proxy before real GENE data: every
@@ -58,6 +66,19 @@ BRANCH_NAMES = ("ITG", "TEM")
 K = 15
 TRANSITION = .05                 # branch-gap fraction, as in the benchmark mask
 PLACEMENT_ARMS = ("space-filling", "gpr-var", "gpr-u50-g50", "gpr-grad", "vwrs", "vurs")
+
+
+def transition_mask(G, scale):
+    """Live branch competition: branches within 5% of the range AND growing.
+
+    A gap test alone also admits regions where both branches are near zero --
+    ITG stable and KBM below onset -- which is not mode competition. For
+    ITG-KBM that dead zone is 93% of a gap-only band and it drags the
+    concordance AUC from 0.968 to 0.554; for ITG-TEM it is 21% and changes
+    almost nothing. The gap-only mask is still reported for comparison.
+    """
+    gap = np.abs(G[:, 0]-G[:, 1])/scale
+    return (gap <= TRANSITION) & (G.max(axis=1) > TRANSITION*scale), gap <= TRANSITION
 
 
 def probe_cloud(count, seed=4242):
@@ -149,8 +170,7 @@ def sweep_views(x, weights):
         truth, block = response_block(CASE, x, view)
         stats = (block.mean(axis=0), block.std(axis=0))
         branch = np.argmax(truth["G"], axis=1)
-        gap = np.abs(truth["G"][:, 0]-truth["G"][:, 1])/float(np.ptp(truth["G"]))
-        transition = gap <= TRANSITION
+        transition, gap_only = transition_mask(truth["G"], float(np.ptp(truth["G"])))
         for w in weights:
             if view != "observables" and w == 0:
                 continue                      # identical to observables at w = 0
@@ -164,7 +184,8 @@ def sweep_views(x, weights):
                              noise_fraction=float((seg == -1).mean()),
                              segment_branch_ari=float(adjusted_rand_score(branch, seg)),
                              stability_ari=stab, stability_sd=stab_sd,
-                             transition_auc=float(roc_auc_score(transition, 1-g))))
+                             transition_auc=float(roc_auc_score(transition, 1-g)),
+                             transition_auc_gap_only=float(roc_auc_score(gap_only, 1-g))))
             if rows[-1]["segments"] == 0:
                 # All-unassigned agrees with itself trivially; not a stability.
                 rows[-1]["stability_ari"] = rows[-1]["stability_sd"] = None
@@ -177,14 +198,92 @@ def sweep_views(x, weights):
     return rows
 
 
+def summarize(root):
+    """One table and one heatmap over every case folder under `root`.
+
+    Placement is expressed as a lift: an arm's transition-band share divided by
+    the probe cloud's, so 1 means no targeting whatever the case's band size.
+    """
+    root = pathlib.Path(root)
+    cases = []
+    for path in sorted(root.glob("*/metrics.json")):
+        cases.append(json.loads(path.read_text(encoding="utf-8")))
+    if not cases:
+        raise SystemExit(f"no per-case metrics under {root}")
+    arms = sorted({a for c in cases for a in c["placement"]})
+    names = [c["case"].replace("ionut-", "") for c in cases]
+    lift = np.full((len(arms), len(cases)), np.nan)
+    for j, c in enumerate(cases):
+        for i, arm in enumerate(arms):
+            runs = c["placement"].get(arm, [])
+            if runs:
+                lift[i, j] = np.mean([r["transition_share"] for r in runs])/c["transition_fraction"]
+
+    def row(c, view, weight):
+        return next(r for r in c["sweep"] if r["view"] == view and r["weight"] == weight)
+
+    figure, axes = plt.subplots(1, 2, figsize=(19, 7.5), layout="constrained",
+                                gridspec_kw=dict(width_ratios=(1.25, 1)))
+    image = axes[0].imshow(lift, cmap="RdBu_r", norm=matplotlib.colors.TwoSlopeNorm(1., .2, 2.5),
+                           aspect="auto")
+    for i in range(len(arms)):
+        for j in range(len(cases)):
+            if np.isfinite(lift[i, j]):
+                axes[0].text(j, i, f"{lift[i, j]:.2f}", ha="center", va="center", fontsize=8)
+    axes[0].set_xticks(range(len(cases)), names, rotation=35, ha="right")
+    axes[0].set_yticks(range(len(arms)), arms)
+    axes[0].set_title("transition targeting: arm's band share ÷ probe share, mean of seeds\n"
+                      "(1 = uniform, >1 targets the transition, <1 avoids it)")
+    figure.colorbar(image, ax=axes[0], shrink=.8)
+
+    metrics = [("parameter-space transition AUC", lambda c: row(c, "inputs only", 0.)["transition_auc"]),
+               ("observable-space branch ARI", lambda c: row(c, "observables", 1.)["segment_branch_ari"]),
+               ("observable-space stability", lambda c: row(c, "observables", 1.)["stability_ari"] or 0.),
+               ("probe share in band", lambda c: c["transition_fraction"])]
+    width = .8/len(metrics)
+    for k, (label, get) in enumerate(metrics):
+        axes[1].bar(np.arange(len(cases)) + (k-(len(metrics)-1)/2)*width,
+                    [get(c) for c in cases], width, label=label)
+    axes[1].set_xticks(range(len(cases)), names, rotation=35, ha="right")
+    axes[1].set_ylim(0, 1.05)
+    axes[1].axhline(.5, color="#999999", linewidth=.8, linestyle=":")
+    axes[1].legend(fontsize=8, loc="lower left")
+    axes[1].set_title("embedding tooling per case (feature space)")
+    figure.suptitle("Native 6D Ionut proxies — embedding and placement across all cases", fontsize=13)
+    figure.savefig(root/"summary.png", dpi=110)
+    plt.close(figure)
+
+    summary = dict(cases=names, arms=arms, transition_lift=lift.tolist(),
+                   per_case=[dict(case=c["case"], branches=c["branches"],
+                                  transition_fraction=c["transition_fraction"],
+                                  parameter_auc=row(c, "inputs only", 0.)["transition_auc"],
+                                  observable_ari=row(c, "observables", 1.)["segment_branch_ari"],
+                                  observable_stability=row(c, "observables", 1.)["stability_ari"],
+                                  trustworthiness={f"{d['label']}/{d['method']}": d["trustworthiness"]
+                                                   for d in c["display"]})
+                             for c in cases])
+    (root/"summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    print(f"summarized {len(cases)} cases into {root/'summary.png'}")
+
+
 def main():
+    global CASE, BRANCH_NAMES
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--probes", type=int, default=8192)
     parser.add_argument("--weights", type=float, nargs="+", default=[0., .25, .5, 1., 2.])
     parser.add_argument("--run", type=pathlib.Path,
                         default=pathlib.Path("results/6d-ionut-spine-2026-09-20"))
+    parser.add_argument("--case", default=CASE)
+    parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    parser.add_argument("--summarize", action="store_true",
+                        help="combine per-case metrics under --output into one summary")
     args = parser.parse_args()
+    if args.summarize:
+        summarize(args.output)
+        return
+    CASE = args.case
+    BRANCH_NAMES = ("ITG", "KBM") if "itg-kbm" in CASE else ("ITG", "TEM")
     figures = args.output/"figures"
     figures.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
@@ -193,8 +292,8 @@ def main():
     truth, block = response_block(CASE, x, "observables")
     stats = (block.mean(axis=0), block.std(axis=0))
     branch = np.argmax(truth["G"], axis=1)
-    gap = np.abs(truth["G"][:, 0]-truth["G"][:, 1])/float(np.ptp(truth["G"]))
-    transition = gap <= TRANSITION
+    scale = float(np.ptp(truth["G"]))
+    transition, gap_only = transition_mask(truth["G"], scale)
     contest = competition(truth["G"])
     gamma, omega = truth["gamma"], truth["omega"]
     size = 2 + 40*(gamma-gamma.min())/max(float(np.ptp(gamma)), 1e-12)
@@ -259,24 +358,32 @@ def main():
                         cmap="viridis_r", alpha=.85)
         figure.colorbar(image, ax=axes[i, 0], shrink=.8)
         scatter(axes[i, 1], xy, np.where(transition, "#d62728", "#cfcfcf"), size,
-                f"true transition band (gap ≤ {TRANSITION:.0%} of branch range)", alpha=.85)
+                f"live transition: gap ≤ {TRANSITION:.0%} of range and a branch growing", alpha=.85)
         axes[i, 2].hist(g[~transition], bins=bins, alpha=.6, density=True, label="away from transition")
         axes[i, 2].hist(g[transition], bins=bins, alpha=.6, density=True, label="in transition band")
         axes[i, 2].set_xlabel("coherence g"); axes[i, 2].set_ylabel("density")
         axes[i, 2].legend(fontsize=8)
         axes[i, 2].set_title(f"low coherence as a transition detector: AUC {auc:.3f}")
-    figure.suptitle("Concordance lens on a known answer (PaCMAP display).  In parameter space the modes "
-                    "interpenetrate at the boundary, so low coherence finds it.\nIn observable space ω's "
-                    "sign splits the modes into separate islands, coherence is 1 everywhere, and the lens "
-                    "has nothing to find.", fontsize=12)
+    figure.suptitle(f"{CASE}: concordance lens on a known answer (PaCMAP display).  Top: parameter "
+                    "space.  Bottom: observable space.\nLow coherence can only mark the transition where "
+                    "the two branches actually interpenetrate in that view.", fontsize=12)
     figure.savefig(figures/"02-concordance-vs-transition.png", dpi=100)
     plt.close(figure)
 
     # Sheet 3: placement. Each arm's final design, mapped to its nearest probe
     # in feature space, drawn on the fixed embeddings.
-    found = designs(args.run, CASE)
-    arms = [a for a in PLACEMENT_ARMS if a in found]
+    # Placement statistics over every arm and seed, measured in physical space
+    # from the designs' own branch gaps. The figure draws seed 0 only.
     placement = {}
+    for seed in args.seeds:
+        for arm, d in sorted(designs(args.run, CASE, seed).items()):
+            dtruth = values(CASE, d)
+            live, _ = transition_mask(dtruth["G"], scale)
+            placement.setdefault(arm, []).append(dict(
+                seed=seed, points=int(len(d)), transition_share=float(live.mean()),
+                second_branch_share=float((np.argmax(dtruth["G"], axis=1) == 1).mean())))
+    found = designs(args.run, CASE, args.seeds[0])
+    arms = [a for a in PLACEMENT_ARMS if a in found]
     if arms:
         panels = [s for s in shown if s["method"] == "pacmap"]
         figure, axes = plt.subplots(len(panels), len(arms), figsize=(3.7*len(arms), 4.2*len(panels)),
@@ -284,10 +391,7 @@ def main():
         for j, arm in enumerate(arms):
             d = found[arm]
             dtruth, dblock = response_block(CASE, d, "observables")
-            dgap = np.abs(dtruth["G"][:, 0]-dtruth["G"][:, 1])/float(np.ptp(truth["G"]))
-            share = float((dgap <= TRANSITION).mean())
-            placement[arm] = dict(points=int(len(d)), transition_share=share,
-                                  tem_share=float((np.argmax(dtruth["G"], axis=1) == 1).mean()))
+            share = float(transition_mask(dtruth["G"], scale)[0].mean())
             for i, item in enumerate(panels):
                 probe = NearestNeighbors(n_neighbors=1).fit(item["feature"]).kneighbors(
                     features(d, dblock, stats, item["weight"]), return_distance=False)[:, 0]
@@ -302,14 +406,16 @@ def main():
                                    f"(probes {transition.mean():.0%})", fontsize=9)
                 if j == 0:
                     axis.set_ylabel(item["label"])
-        figure.suptitle(f"Where each method's N={len(d)} design lands (seed 0, PaCMAP).  Points coloured "
-                        "by acquisition order; faint background by true branch (blue ITG, orange TEM).",
-                        fontsize=12)
+        figure.suptitle(f"{CASE}: where each method's N={len(d)} design lands (seed {args.seeds[0]}, "
+                        "PaCMAP).  Points coloured by acquisition order; faint background by true "
+                        f"branch (blue {BRANCH_NAMES[0]}, orange {BRANCH_NAMES[1]}).", fontsize=12)
         figure.savefig(figures/"03-placement-on-embedding.png", dpi=100)
         plt.close(figure)
 
-    metrics = dict(case=CASE, probes=len(x), k=K, transition_fraction=float(transition.mean()),
-                   tem_fraction=float(branch.mean()), sweep=sweep,
+    metrics = dict(case=CASE, branches=list(BRANCH_NAMES), probes=len(x), k=K,
+                   transition_fraction=float(transition.mean()),
+                   gap_only_fraction=float(gap_only.mean()),
+                   second_branch_fraction=float(branch.mean()), sweep=sweep,
                    display=[dict(label=s["label"], method=s["method"], weight=s["weight"],
                                  trustworthiness=s["trust"], stability=s["stability"])
                             for s in shown],

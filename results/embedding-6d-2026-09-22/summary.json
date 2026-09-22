@@ -1,0 +1,286 @@
+{
+ "cases": [
+  "itg-kbm-argmax-gamma",
+  "itg-kbm-argmax-omega",
+  "itg-kbm-softmax-gamma",
+  "itg-kbm-softmax-omega",
+  "itg-tem-argmax-gamma",
+  "itg-tem-argmax-omega",
+  "itg-tem-softmax-gamma",
+  "itg-tem-softmax-omega"
+ ],
+ "arms": [
+  "gpr-grad",
+  "gpr-m05-blend",
+  "gpr-m05-grad",
+  "gpr-m05-var",
+  "gpr-u30-g70",
+  "gpr-u50-g50",
+  "gpr-u70-g30",
+  "gpr-var",
+  "moe",
+  "space-filling",
+  "vurs",
+  "vwrs"
+ ],
+ "transition_lift": [
+  [
+   6.603174603174603,
+   58.476190476190474,
+   5.841269841269842,
+   19.49206349206349,
+   0.08016877637130801,
+   5.19831223628692,
+   0.1308016877637131,
+   1.489451476793249
+  ],
+  [
+   7.809523809523809,
+   70.41269841269842,
+   6.984126984126983,
+   37.3968253968254,
+   0.09282700421940927,
+   5.80168776371308,
+   0.10970464135021096,
+   2.5569620253164556
+  ],
+  [
+   21.96825396825397,
+   85.58730158730158,
+   4.634920634920634,
+   36.0,
+   0.17721518987341772,
+   5.776371308016877,
+   0.08438818565400845,
+   4.033755274261604
+  ],
+  [
+   1.0793650793650795,
+   1.1428571428571428,
+   1.26984126984127,
+   0.8253968253968254,
+   0.4978902953586498,
+   0.6160337552742615,
+   0.4641350210970464,
+   0.5443037974683544
+  ],
+  [
+   7.111111111111112,
+   34.095238095238095,
+   5.523809523809524,
+   14.53968253968254,
+   0.10548523206751055,
+   5.375527426160338,
+   0.11392405063291139,
+   1.4303797468354431
+  ],
+  [
+   4.761904761904762,
+   20.825396825396826,
+   3.4285714285714284,
+   6.412698412698412,
+   0.13924050632911392,
+   4.877637130801688,
+   0.20253164556962025,
+   1.0126582278481013
+  ],
+  [
+   1.9047619047619047,
+   2.53968253968254,
+   1.26984126984127,
+   1.3333333333333333,
+   0.3248945147679325,
+   1.240506329113924,
+   0.350210970464135,
+   0.6666666666666666
+  ],
+  [
+   0.3174603174603175,
+   0.888888888888889,
+   0.5079365079365079,
+   0.7619047619047619,
+   0.5147679324894514,
+   0.6751054852320676,
+   0.5569620253164557,
+   0.569620253164557
+  ],
+  [
+   1.1428571428571428,
+   0.5079365079365079,
+   1.2063492063492063,
+   0.8253968253968254,
+   0.6582278481012658,
+   0.7637130801687764,
+   0.6540084388185654,
+   0.5189873417721519
+  ],
+  [
+   0.8253968253968254,
+   0.8253968253968254,
+   0.8253968253968254,
+   0.8253968253968254,
+   0.6666666666666666,
+   0.6666666666666666,
+   0.6666666666666666,
+   0.6666666666666666
+  ],
+  [
+   1.7142857142857142,
+   1.9047619047619047,
+   1.9047619047619047,
+   1.3968253968253967,
+   0.8987341772151899,
+   1.0337552742616034,
+   0.8649789029535865,
+   0.9789029535864978
+  ],
+  [
+   2.3492063492063493,
+   2.0952380952380953,
+   2.0317460317460316,
+   1.9682539682539684,
+   1.059071729957806,
+   1.1729957805907174,
+   1.0421940928270041,
+   1.059071729957806
+  ]
+ ],
+ "per_case": [
+  {
+   "case": "ionut-itg-kbm-argmax-gamma",
+   "branches": [
+    "ITG",
+    "KBM"
+   ],
+   "transition_fraction": 0.01025390625,
+   "parameter_auc": 0.9676135562759884,
+   "observable_ari": 0.24555762992561495,
+   "observable_stability": 0.8641266595412607,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.9600500205277498,
+    "observable space/umap": 0.9628958832530885
+   }
+  },
+  {
+   "case": "ionut-itg-kbm-argmax-omega",
+   "branches": [
+    "ITG",
+    "KBM"
+   ],
+   "transition_fraction": 0.01025390625,
+   "parameter_auc": 0.9676135562759884,
+   "observable_ari": 0.24555762992561495,
+   "observable_stability": 0.8641266595412607,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.9600500205277498,
+    "observable space/umap": 0.9628958832530885
+   }
+  },
+  {
+   "case": "ionut-itg-kbm-softmax-gamma",
+   "branches": [
+    "ITG",
+    "KBM"
+   ],
+   "transition_fraction": 0.01025390625,
+   "parameter_auc": 0.9676135562759884,
+   "observable_ari": 0.27131684534273026,
+   "observable_stability": 0.8612158094009228,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.9597433508752286,
+    "observable space/umap": 0.9632691897137312
+   }
+  },
+  {
+   "case": "ionut-itg-kbm-softmax-omega",
+   "branches": [
+    "ITG",
+    "KBM"
+   ],
+   "transition_fraction": 0.01025390625,
+   "parameter_auc": 0.9676135562759884,
+   "observable_ari": 0.27131684534273026,
+   "observable_stability": 0.8612158094009228,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.9597433508752286,
+    "observable space/umap": 0.9632691897137312
+   }
+  },
+  {
+   "case": "ionut-itg-tem-argmax-gamma",
+   "branches": [
+    "ITG",
+    "TEM"
+   ],
+   "transition_fraction": 0.154296875,
+   "parameter_auc": 0.9183694012738621,
+   "observable_ari": 0.9623444247552271,
+   "observable_stability": 0.9929663262297543,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.953320673310193,
+    "observable space/umap": 0.9608363527787108
+   }
+  },
+  {
+   "case": "ionut-itg-tem-argmax-omega",
+   "branches": [
+    "ITG",
+    "TEM"
+   ],
+   "transition_fraction": 0.154296875,
+   "parameter_auc": 0.9183694012738621,
+   "observable_ari": 0.9623444247552271,
+   "observable_stability": 0.9929663262297543,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.953320673310193,
+    "observable space/umap": 0.9608363527787108
+   }
+  },
+  {
+   "case": "ionut-itg-tem-softmax-gamma",
+   "branches": [
+    "ITG",
+    "TEM"
+   ],
+   "transition_fraction": 0.154296875,
+   "parameter_auc": 0.9183694012738621,
+   "observable_ari": 0.0,
+   "observable_stability": null,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.9485729854812824,
+    "observable space/umap": 0.9575835479416266
+   }
+  },
+  {
+   "case": "ionut-itg-tem-softmax-omega",
+   "branches": [
+    "ITG",
+    "TEM"
+   ],
+   "transition_fraction": 0.154296875,
+   "parameter_auc": 0.9183694012738621,
+   "observable_ari": 0.0,
+   "observable_stability": null,
+   "trustworthiness": {
+    "parameter space/pacmap": 0.8864603067965513,
+    "parameter space/umap": 0.9165079834285075,
+    "observable space/pacmap": 0.9485729854812824,
+    "observable space/umap": 0.9575835479416266
+   }
+  }
+ ]
+}

@@ -1,0 +1,404 @@
+{
+ "case": "ionut-itg-kbm-softmax-omega",
+ "branches": [
+  "ITG",
+  "KBM"
+ ],
+ "probes": 8192,
+ "k": 15,
+ "transition_fraction": 0.01025390625,
+ "gap_only_fraction": 0.150146484375,
+ "second_branch_fraction": 0.3956298828125,
+ "sweep": [
+  {
+   "view": "inputs only",
+   "weight": 0.0,
+   "circular": false,
+   "assortativity": 0.9092447916666666,
+   "segments": 0,
+   "noise_fraction": 1.0,
+   "segment_branch_ari": 0.0,
+   "stability_ari": null,
+   "stability_sd": null,
+   "transition_auc": 0.9676135562759884,
+   "transition_auc_gap_only": 0.5540339777140949
+  },
+  {
+   "view": "observables",
+   "weight": 0.25,
+   "circular": false,
+   "assortativity": 0.9521728515625001,
+   "segments": 0,
+   "noise_fraction": 1.0,
+   "segment_branch_ari": 0.0,
+   "stability_ari": null,
+   "stability_sd": null,
+   "transition_auc": 0.970840821528414,
+   "transition_auc_gap_only": 0.5962958616227931
+  },
+  {
+   "view": "observables",
+   "weight": 0.5,
+   "circular": false,
+   "assortativity": 0.964013671875,
+   "segments": 0,
+   "noise_fraction": 1.0,
+   "segment_branch_ari": 0.0,
+   "stability_ari": null,
+   "stability_sd": null,
+   "transition_auc": 0.9576909636572932,
+   "transition_auc_gap_only": 0.5816211933305774
+  },
+  {
+   "view": "observables",
+   "weight": 1.0,
+   "circular": false,
+   "assortativity": 0.9689860026041668,
+   "segments": 2,
+   "noise_fraction": 0.5703125,
+   "segment_branch_ari": 0.27131684534273026,
+   "stability_ari": 0.8612158094009228,
+   "stability_sd": 0.03412746085182031,
+   "transition_auc": 0.9254454741936241,
+   "transition_auc_gap_only": 0.5432180034239297
+  },
+  {
+   "view": "observables",
+   "weight": 2.0,
+   "circular": false,
+   "assortativity": 0.9660807291666667,
+   "segments": 2,
+   "noise_fraction": 0.4903564453125,
+   "segment_branch_ari": 0.3882133367031567,
+   "stability_ari": 0.8672723663094775,
+   "stability_sd": 0.04086431569421464,
+   "transition_auc": 0.8921171329903447,
+   "transition_auc_gap_only": 0.5002916529452568
+  },
+  {
+   "view": "branches",
+   "weight": 0.25,
+   "circular": true,
+   "assortativity": 0.968701171875,
+   "segments": 0,
+   "noise_fraction": 1.0,
+   "segment_branch_ari": 0.0,
+   "stability_ari": null,
+   "stability_sd": null,
+   "transition_auc": 0.981734677097282,
+   "transition_auc_gap_only": 0.614438951987911
+  },
+  {
+   "view": "branches",
+   "weight": 0.5,
+   "circular": true,
+   "assortativity": 0.9825683593750001,
+   "segments": 2,
+   "noise_fraction": 0.7490234375,
+   "segment_branch_ari": 0.04624155527536897,
+   "stability_ari": 0.8118984280551272,
+   "stability_sd": 0.04436545636683626,
+   "transition_auc": 0.9843577477858435,
+   "transition_auc_gap_only": 0.5956982504326624
+  },
+  {
+   "view": "branches",
+   "weight": 1.0,
+   "circular": true,
+   "assortativity": 0.9909423828125,
+   "segments": 2,
+   "noise_fraction": 0.5965576171875,
+   "segment_branch_ari": 0.19663408751235495,
+   "stability_ari": 0.8043075406564901,
+   "stability_sd": 0.04734852657535405,
+   "transition_auc": 0.9835421218314657,
+   "transition_auc_gap_only": 0.5667722923279217
+  },
+  {
+   "view": "branches",
+   "weight": 2.0,
+   "circular": true,
+   "assortativity": 0.9945963541666667,
+   "segments": 2,
+   "noise_fraction": 0.26220703125,
+   "segment_branch_ari": 0.6114575908757376,
+   "stability_ari": 0.9156130418636353,
+   "stability_sd": 0.016696176133985767,
+   "transition_auc": 0.9433033511875397,
+   "transition_auc_gap_only": 0.5436636281042498
+  }
+ ],
+ "display": [
+  {
+   "label": "parameter space",
+   "method": "pacmap",
+   "weight": 0.0,
+   "trustworthiness": 0.8864603067965513,
+   "stability": 1.0
+  },
+  {
+   "label": "parameter space",
+   "method": "umap",
+   "weight": 0.0,
+   "trustworthiness": 0.9165079834285075,
+   "stability": 1.0
+  },
+  {
+   "label": "observable space",
+   "method": "pacmap",
+   "weight": 1.0,
+   "trustworthiness": 0.9597433508752286,
+   "stability": 0.8612158094009228
+  },
+  {
+   "label": "observable space",
+   "method": "umap",
+   "weight": 1.0,
+   "trustworthiness": 0.9632691897137312,
+   "stability": 0.8612158094009228
+  }
+ ],
+ "placement": {
+  "gpr-grad": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.185546875,
+    "second_branch_share": 0.318359375
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.20703125,
+    "second_branch_share": 0.326171875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.20703125,
+    "second_branch_share": 0.28125
+   }
+  ],
+  "gpr-m05-blend": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.38671875,
+    "second_branch_share": 0.208984375
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.375,
+    "second_branch_share": 0.205078125
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.388671875,
+    "second_branch_share": 0.205078125
+   }
+  ],
+  "gpr-m05-grad": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.361328125,
+    "second_branch_share": 0.130859375
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.359375,
+    "second_branch_share": 0.119140625
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.38671875,
+    "second_branch_share": 0.10546875
+   }
+  ],
+  "gpr-m05-var": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.0078125,
+    "second_branch_share": 0.40625
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.009765625,
+    "second_branch_share": 0.412109375
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.0078125,
+    "second_branch_share": 0.412109375
+   }
+  ],
+  "gpr-u30-g70": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.150390625,
+    "second_branch_share": 0.35546875
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.142578125,
+    "second_branch_share": 0.337890625
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.154296875,
+    "second_branch_share": 0.333984375
+   }
+  ],
+  "gpr-u50-g50": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.06640625,
+    "second_branch_share": 0.388671875
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.0703125,
+    "second_branch_share": 0.38671875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.060546875,
+    "second_branch_share": 0.38671875
+   }
+  ],
+  "gpr-u70-g30": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.01171875,
+    "second_branch_share": 0.396484375
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.021484375,
+    "second_branch_share": 0.39453125
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.0078125,
+    "second_branch_share": 0.39453125
+   }
+  ],
+  "gpr-var": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.005859375,
+    "second_branch_share": 0.404296875
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.01171875,
+    "second_branch_share": 0.40234375
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.005859375,
+    "second_branch_share": 0.39453125
+   }
+  ],
+  "moe": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.0078125,
+    "second_branch_share": 0.416015625
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.009765625,
+    "second_branch_share": 0.423828125
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.0078125,
+    "second_branch_share": 0.3984375
+   }
+  ],
+  "space-filling": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.009765625,
+    "second_branch_share": 0.39453125
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.009765625,
+    "second_branch_share": 0.419921875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.005859375,
+    "second_branch_share": 0.396484375
+   }
+  ],
+  "vurs": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.009765625,
+    "second_branch_share": 0.4453125
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.017578125,
+    "second_branch_share": 0.462890625
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.015625,
+    "second_branch_share": 0.474609375
+   }
+  ],
+  "vwrs": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.0234375,
+    "second_branch_share": 0.466796875
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.015625,
+    "second_branch_share": 0.505859375
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.021484375,
+    "second_branch_share": 0.484375
+   }
+  ]
+ },
+ "seconds": 153.63363929999468
+}

@@ -1,0 +1,404 @@
+{
+ "case": "ionut-itg-kbm-argmax-gamma",
+ "branches": [
+  "ITG",
+  "KBM"
+ ],
+ "probes": 8192,
+ "k": 15,
+ "transition_fraction": 0.01025390625,
+ "gap_only_fraction": 0.150146484375,
+ "second_branch_fraction": 0.3956298828125,
+ "sweep": [
+  {
+   "view": "inputs only",
+   "weight": 0.0,
+   "circular": false,
+   "assortativity": 0.9092447916666666,
+   "segments": 0,
+   "noise_fraction": 1.0,
+   "segment_branch_ari": 0.0,
+   "stability_ari": null,
+   "stability_sd": null,
+   "transition_auc": 0.9676135562759884,
+   "transition_auc_gap_only": 0.5540339777140949
+  },
+  {
+   "view": "observables",
+   "weight": 0.25,
+   "circular": false,
+   "assortativity": 0.9648356119791668,
+   "segments": 0,
+   "noise_fraction": 1.0,
+   "segment_branch_ari": 0.0,
+   "stability_ari": null,
+   "stability_sd": null,
+   "transition_auc": 0.9009267742617519,
+   "transition_auc_gap_only": 0.5977224211340074
+  },
+  {
+   "view": "observables",
+   "weight": 0.5,
+   "circular": false,
+   "assortativity": 0.9768798828125,
+   "segments": 2,
+   "noise_fraction": 0.7803955078125,
+   "segment_branch_ari": 0.029793325768115837,
+   "stability_ari": 0.6852707543237774,
+   "stability_sd": 0.342758135104641,
+   "transition_auc": 0.861560892240468,
+   "transition_auc_gap_only": 0.5721021550204011
+  },
+  {
+   "view": "observables",
+   "weight": 1.0,
+   "circular": false,
+   "assortativity": 0.9804850260416667,
+   "segments": 2,
+   "noise_fraction": 0.5941162109375,
+   "segment_branch_ari": 0.24555762992561495,
+   "stability_ari": 0.8641266595412607,
+   "stability_sd": 0.022634726080487118,
+   "transition_auc": 0.8425452815561352,
+   "transition_auc_gap_only": 0.5366365145984123
+  },
+  {
+   "view": "observables",
+   "weight": 2.0,
+   "circular": false,
+   "assortativity": 0.9767822265624999,
+   "segments": 2,
+   "noise_fraction": 0.4683837890625,
+   "segment_branch_ari": 0.41974469166244166,
+   "stability_ari": 0.8965261556843606,
+   "stability_sd": 0.010460170167150378,
+   "transition_auc": 0.833596888434703,
+   "transition_auc_gap_only": 0.517942290669675
+  },
+  {
+   "view": "branches",
+   "weight": 0.25,
+   "circular": true,
+   "assortativity": 0.9762369791666666,
+   "segments": 0,
+   "noise_fraction": 1.0,
+   "segment_branch_ari": 0.0,
+   "stability_ari": null,
+   "stability_sd": null,
+   "transition_auc": 0.9128418140813306,
+   "transition_auc_gap_only": 0.6081061418198209
+  },
+  {
+   "view": "branches",
+   "weight": 0.5,
+   "circular": true,
+   "assortativity": 0.9881510416666666,
+   "segments": 2,
+   "noise_fraction": 0.741943359375,
+   "segment_branch_ari": 0.05071728870797556,
+   "stability_ari": 0.8233422300869092,
+   "stability_sd": 0.040548857436284905,
+   "transition_auc": 0.8774065003406394,
+   "transition_auc_gap_only": 0.5708686878595302
+  },
+  {
+   "view": "branches",
+   "weight": 1.0,
+   "circular": true,
+   "assortativity": 0.9935302734375,
+   "segments": 2,
+   "noise_fraction": 0.492431640625,
+   "segment_branch_ari": 0.3112760351280278,
+   "stability_ari": 0.8209205388403381,
+   "stability_sd": 0.05027706386263518,
+   "transition_auc": 0.8466402964737942,
+   "transition_auc_gap_only": 0.5502204183920609
+  },
+  {
+   "view": "branches",
+   "weight": 2.0,
+   "circular": true,
+   "assortativity": 0.9960937500000001,
+   "segments": 2,
+   "noise_fraction": 0.251953125,
+   "segment_branch_ari": 0.623969990711532,
+   "stability_ari": 0.9281952764214019,
+   "stability_sd": 0.01804926525378877,
+   "transition_auc": 0.7889151220428972,
+   "transition_auc_gap_only": 0.5346967159703198
+  }
+ ],
+ "display": [
+  {
+   "label": "parameter space",
+   "method": "pacmap",
+   "weight": 0.0,
+   "trustworthiness": 0.8864603067965513,
+   "stability": 1.0
+  },
+  {
+   "label": "parameter space",
+   "method": "umap",
+   "weight": 0.0,
+   "trustworthiness": 0.9165079834285075,
+   "stability": 1.0
+  },
+  {
+   "label": "observable space",
+   "method": "pacmap",
+   "weight": 1.0,
+   "trustworthiness": 0.9600500205277498,
+   "stability": 0.8641266595412607
+  },
+  {
+   "label": "observable space",
+   "method": "umap",
+   "weight": 1.0,
+   "trustworthiness": 0.9628958832530885,
+   "stability": 0.8641266595412607
+  }
+ ],
+ "placement": {
+  "gpr-grad": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.080078125,
+    "second_branch_share": 0.626953125
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.056640625,
+    "second_branch_share": 0.591796875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.06640625,
+    "second_branch_share": 0.671875
+   }
+  ],
+  "gpr-m05-blend": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.087890625,
+    "second_branch_share": 0.796875
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.0625,
+    "second_branch_share": 0.78515625
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.08984375,
+    "second_branch_share": 0.78125
+   }
+  ],
+  "gpr-m05-grad": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.20703125,
+    "second_branch_share": 0.970703125
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.212890625,
+    "second_branch_share": 0.951171875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.255859375,
+    "second_branch_share": 0.935546875
+   }
+  ],
+  "gpr-m05-var": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.01953125,
+    "second_branch_share": 0.400390625
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.001953125,
+    "second_branch_share": 0.404296875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.01171875,
+    "second_branch_share": 0.396484375
+   }
+  ],
+  "gpr-u30-g70": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.080078125,
+    "second_branch_share": 0.625
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.06640625,
+    "second_branch_share": 0.609375
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.072265625,
+    "second_branch_share": 0.6015625
+   }
+  ],
+  "gpr-u50-g50": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.052734375,
+    "second_branch_share": 0.525390625
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.046875,
+    "second_branch_share": 0.552734375
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.046875,
+    "second_branch_share": 0.5625
+   }
+  ],
+  "gpr-u70-g30": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.017578125,
+    "second_branch_share": 0.453125
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.021484375,
+    "second_branch_share": 0.4609375
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.01953125,
+    "second_branch_share": 0.462890625
+   }
+  ],
+  "gpr-var": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.001953125,
+    "second_branch_share": 0.396484375
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.005859375,
+    "second_branch_share": 0.39453125
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.001953125,
+    "second_branch_share": 0.40234375
+   }
+  ],
+  "moe": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.015625,
+    "second_branch_share": 0.39453125
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.015625,
+    "second_branch_share": 0.39453125
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.00390625,
+    "second_branch_share": 0.390625
+   }
+  ],
+  "space-filling": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.009765625,
+    "second_branch_share": 0.39453125
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.009765625,
+    "second_branch_share": 0.419921875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.005859375,
+    "second_branch_share": 0.396484375
+   }
+  ],
+  "vurs": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.013671875,
+    "second_branch_share": 0.416015625
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.01953125,
+    "second_branch_share": 0.423828125
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.01953125,
+    "second_branch_share": 0.3984375
+   }
+  ],
+  "vwrs": [
+   {
+    "seed": 0,
+    "points": 512,
+    "transition_share": 0.021484375,
+    "second_branch_share": 0.416015625
+   },
+   {
+    "seed": 1,
+    "points": 512,
+    "transition_share": 0.02734375,
+    "second_branch_share": 0.4296875
+   },
+   {
+    "seed": 2,
+    "points": 512,
+    "transition_share": 0.0234375,
+    "second_branch_share": 0.404296875
+   }
+  ]
+ },
+ "seconds": 153.9157777000073
+}

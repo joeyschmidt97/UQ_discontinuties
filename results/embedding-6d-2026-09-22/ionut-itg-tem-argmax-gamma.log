@@ -1,14 +1,14 @@
-     inputs only w=0.0  assort 0.885  segments 0  ARI 0.000  stability n/a  transition AUC 0.921
-     observables w=0.25 assort 0.997  segments 2  ARI -0.009  stability 0.71  transition AUC 0.550
-     observables w=0.5  assort 1.000  segments 2  ARI 0.310  stability 0.75  transition AUC 0.502
+     inputs only w=0.0  assort 0.885  segments 0  ARI 0.000  stability n/a  transition AUC 0.918
+     observables w=0.25 assort 0.997  segments 2  ARI -0.009  stability 0.71  transition AUC 0.520
+     observables w=0.5  assort 1.000  segments 2  ARI 0.310  stability 0.75  transition AUC 0.500
      observables w=1.0  assort 1.000  segments 2  ARI 0.962  stability 0.99  transition AUC 0.500
      observables w=2.0  assort 1.000  segments 2  ARI 0.992  stability 1.00  transition AUC 0.500
-        branches w=0.25 assort 0.996  segments 2  ARI -0.024  stability 0.31  transition AUC 0.555
-        branches w=0.5  assort 1.000  segments 2  ARI 0.183  stability 0.77  transition AUC 0.503
+        branches w=0.25 assort 0.996  segments 2  ARI -0.024  stability 0.31  transition AUC 0.525
+        branches w=0.5  assort 1.000  segments 2  ARI 0.183  stability 0.77  transition AUC 0.500
         branches w=1.0  assort 1.000  segments 2  ARI 0.739  stability 0.94  transition AUC 0.500
         branches w=2.0  assort 1.000  segments 2  ARI 0.835  stability 0.98  transition AUC 0.500
 parameter space / pacmap: trustworthiness 0.886
 parameter space / umap: trustworthiness 0.917
 observable space / pacmap: trustworthiness 0.953
 observable space / umap: trustworthiness 0.961
-done in 8.1 min
+done in 2.6 min
