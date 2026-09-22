@@ -109,9 +109,41 @@ def final_table(rows):
     return peaks, table
 
 
+_REPLAYS = {}
+
+
 def design_for(row):
-    """The stored design, or an exact seeded replay checked against the score."""
+    """The stored design, or an exact seeded replay checked against the score.
+
+    Replays are cached, because several sheets draw the same design and a GP
+    trajectory at the full budget takes minutes to reproduce.
+    """
+    key = (row["case"], row["seed"], row["arm"], row["noise_peak"])
+    if key not in _REPLAYS:
+        _REPLAYS[key] = _design_for(row)
+        surface, x, observed, reps, replayed = _REPLAYS[key]
+        if replayed and REPLAY_CACHE is not None:
+            cache = (json.loads(REPLAY_CACHE.read_text(encoding="utf-8"))
+                     if REPLAY_CACHE.exists() else {})
+            cache["|".join(map(str, key))] = dict(x=x.tolist(), y_observed=observed.tolist(),
+                                                  replicates=reps.tolist())
+            REPLAY_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+    return _REPLAYS[key]
+
+
+# Replayed designs are written beside the results so they are paid for once.
+# Entries are keyed by case, seed, arm and noise peak, and are only ever
+# written after the replay reproduced the stored placement score.
+REPLAY_CACHE = None
+
+
+def _design_for(row):
     surface = Noisy2DSurface(row["case"], row["seed"], peak=row["noise_peak"])
+    if row.get("x") is None and REPLAY_CACHE is not None and REPLAY_CACHE.exists():
+        cached = json.loads(REPLAY_CACHE.read_text(encoding="utf-8")).get(
+            "|".join(map(str, (row["case"], row["seed"], row["arm"], row["noise_peak"]))))
+        if cached is not None:
+            row = dict(row, **cached)
     if row.get("x") is not None:
         return surface, np.asarray(row["x"]), np.asarray(row["y_observed"]), \
             np.asarray(row["replicates"]), False
@@ -124,6 +156,117 @@ def design_for(row):
         raise RuntimeError(f"replay of {row['arm']} does not reproduce the stored score "
                            f"({replayed:.6g} vs {row['placement_error']:.6g})")
     return surface, obs.x, obs.y, obs.replicates, True
+
+
+# At zero noise a noise-aware arm runs its clean twin's algorithm: the spread
+# collapses to the absolute floor, so denoising, the heteroscedastic alpha and
+# the aleatoric penalty are all constant and change no decision. The zero-noise
+# row therefore shows the twin's design rather than an empty panel.
+CLEAN_TWIN = {"vwrs-n": "vwrs", "vurs-n": "vurs", "vurs-a": "vurs", "gpr-n": "gpr-u50-g50"}
+ARM_ORDER = ("space-filling", "gpr-var", "gpr-u50-g50", "gpr-n", "vwrs", "vwrs-n",
+             "vurs", "vurs-n", "vurs-a")
+
+
+def placement_sheet(rows, case, seed, path, noisy_peak=.20):
+    """Point placement in the style of the 2D benchmark's placement sheet.
+
+    Row 1, no noise: grey isocontours of the true surface, teal mode folds,
+    points coloured by acquisition order.
+    Row 2, noisy, same style: directly comparable with row 1.
+    Row 3, noisy, coloured by error: the filled isocontours show the absolute
+    spread one evaluation carries there -- red where it is worst, which is high
+    response close to a fold -- and each point is coloured on the same scale by
+    the error of the value it actually returned.
+    """
+    final = {(r["arm"], r["noise_peak"]): r for r in rows
+             if r["n"] == r["budget"] and r["case"] == case and r["seed"] == seed}
+    arms = [a for a in ARM_ORDER if any(k[0] == a for k in final)]
+    axis_values = np.linspace(0, 1, GRID)
+    gx, gy = np.meshgrid(axis_values, axis_values)
+    grid = np.column_stack([gx.ravel(), gy.ravel()])
+    clean = Noisy2DSurface(case, seed, peak=0.)
+    truth = clean.truth(grid).reshape(GRID, GRID)
+    region = clean.truth.region(grid).reshape(GRID, GRID)
+    low, high = float(truth.min()), float(truth.max())
+    scale = high-low
+    noisy = Noisy2DSurface(case, seed, peak=noisy_peak)
+    spread = (noisy.spread(grid)/scale).reshape(GRID, GRID)
+
+    designs = {}
+    for arm in arms:
+        for peak, source in ((0., CLEAN_TWIN.get(arm, arm)), (noisy_peak, arm)):
+            row = final.get((source, peak))
+            if row is not None:
+                _, x, observed, reps, _ = design_for(row)
+                designs[(arm, peak)] = (x, observed, reps, source != arm, row)
+    # The ceiling is the field's own largest one-sigma spread, not the largest
+    # returned error: a single Gaussian tail draw otherwise sets the scale and
+    # washes the field and nearly every point out to pale. Returned errors above
+    # the ceiling are clipped to the darkest red, and a power scale keeps the
+    # moderate spread near the fold readable.
+    top = float(spread.max())
+    norm = matplotlib.colors.PowerNorm(gamma=.6, vmin=0, vmax=top, clip=True)
+
+    labels = ("no noise\nacquisition order",
+              f"{noisy_peak:.0%} noise\nacquisition order",
+              f"{noisy_peak:.0%} noise\ncoloured by error")
+    figure, axes = plt.subplots(3, len(arms), figsize=(2.9*len(arms), 9.6),
+                                squeeze=False, layout="constrained")
+    order_image = error_image = None
+    for j, arm in enumerate(arms):
+        for i, label in enumerate(labels):
+            axis = axes[i, j]
+            peak = 0. if i == 0 else noisy_peak
+            axis.set(xlim=(0, 1), ylim=(0, 1), aspect="equal", xticks=[0, .5, 1],
+                     yticks=[0, .5, 1])
+            axis.tick_params(labelsize=7)
+            if i < 2:
+                axis.contourf(gx, gy, truth, levels=np.linspace(low, high, 18),
+                              cmap="Greys", alpha=.30)
+            else:
+                error_image = axis.contourf(gx, gy, spread, levels=np.linspace(0, top, 17),
+                                            cmap="YlOrRd", norm=norm, extend="max")
+                axis.contour(gx, gy, truth, levels=np.linspace(low, high, 12),
+                             colors="#555555", linewidths=.35, alpha=.6)
+            axis.contour(gx, gy, region, levels=np.arange(region.max())+.5,
+                         colors="#008a9a", linewidths=1)
+            if (arm, peak) not in designs:
+                axis.text(.5, .5, "pending", transform=axis.transAxes, ha="center",
+                          color="#888888")
+            else:
+                x, observed, reps, twin, row = designs[(arm, peak)]
+                if i < 2:
+                    order_image = axis.scatter(x[:, 0], x[:, 1], c=np.linspace(0, 1, len(x)),
+                                               cmap="plasma", vmin=0, vmax=1, s=9,
+                                               edgecolors="none")
+                else:
+                    error = np.abs(observed-noisy.truth(x))/scale
+                    axis.scatter(x[:, 0], x[:, 1], c=error, cmap="YlOrRd", norm=norm, s=13,
+                                 edgecolors="black", linewidths=.35)
+                repeated = reps > 1
+                if repeated.any():
+                    axis.scatter(x[repeated, 0], x[repeated, 1], s=36, facecolors="none",
+                                 edgecolors="#00c853", linewidths=1.1)
+                note = f"RMS {row['placement_error']:.4f}"
+                if twin:
+                    note += f"\n= {CLEAN_TWIN[arm]} at 0%"
+                axis.text(.03, .97, note, transform=axis.transAxes, va="top", fontsize=7.5,
+                          bbox=dict(facecolor="white", alpha=.85, edgecolor="none", pad=1.5))
+            if i == 0:
+                axis.set_title(arm, fontsize=11, weight="bold")
+            if j == 0:
+                axis.set_ylabel(label, fontsize=9)
+    if order_image is not None:
+        figure.colorbar(order_image, ax=axes[:2, :].ravel().tolist(), shrink=.7, pad=.01,
+                        label="sample order: early (dark) to late (yellow)")
+    if error_image is not None:
+        figure.colorbar(error_image, ax=axes[2, :].ravel().tolist(), shrink=.9, pad=.01,
+                        label="1σ spread (field), returned error (points)\n/ response range")
+    figure.suptitle(f"Where every method puts its points — {case}, seed {seed}.  "
+                    "Teal: mode folds.  Green rings: replicated points.  "
+                    "RMS is the placement score.", fontsize=12)
+    figure.savefig(path, dpi=115)
+    plt.close(figure)
 
 
 def map_sheet(rows, case, seed, path, mode="placement"):
@@ -260,17 +403,23 @@ def main():
     rows = [r for r in payload["rows"] if r["status"] == "ok"]
     figures = args.run/"figures"
     figures.mkdir(exist_ok=True)
+    global REPLAY_CACHE
+    REPLAY_CACHE = args.run/"replayed-designs.json"
 
     convergence_sheet(rows, figures/"01-error-vs-budget.png")
     noise_field_sheet(args.map_case, args.map_seed, figures/"02-surface-and-noise-field.png")
-    replayed = map_sheet(rows, args.map_case, args.map_seed, figures/"03-placement-error-map.png")
-    map_sheet(rows, args.map_case, args.map_seed, figures/"04-end-to-end-error-map.png",
+    placement_sheet(rows, args.map_case, args.map_seed, figures/"03-point-placement.png")
+    replayed = map_sheet(rows, args.map_case, args.map_seed, figures/"04-placement-error-map.png")
+    map_sheet(rows, args.map_case, args.map_seed, figures/"05-end-to-end-error-map.png",
               mode="end_to_end")
     peaks, table = final_table(rows)
     sheets = [("01-error-vs-budget.png", "Error against budget, by noise level"),
               ("02-surface-and-noise-field.png", "Surface and noise field"),
-              ("03-placement-error-map.png", "Placement: error surface with sampled points"),
-              ("04-end-to-end-error-map.png", "End-to-end: error surface with sampled points")]
+              ("03-point-placement.png", "Where every method puts its points"),
+              ("04-placement-error-map.png",
+               "Reconstruction error with sampled points (placement)"),
+              ("05-end-to-end-error-map.png",
+               "Reconstruction error with sampled points (end-to-end)")]
     html(payload, rows, sheets, peaks, table, args.run/"index.html")
     print(f"wrote {(args.run/'index.html').resolve()} ({replayed or 0} map designs replayed)")
 
