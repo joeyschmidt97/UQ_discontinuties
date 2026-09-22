@@ -17,6 +17,7 @@ selection weights, so argmax and softmax variants of one pair share a physical
 mask and stay comparable.
 """
 import numpy as np
+from scipy.stats import qmc
 
 from scripts.generate_ionut_data import CASES as NATIVE_CASES, values
 
@@ -55,13 +56,34 @@ class IonutSurface:
         """Dominant branch by growth rate, independent of the selection rule."""
         return np.argmax(self.branches(x), axis=1)
 
+    def branch_scale(self):
+        """Branch growth-rate range on one fixed probe cloud, computed once.
+
+        The mask used to normalize by the range of whatever batch it was called
+        on, so the band depended on the query set and a single point had range
+        zero. A fixed cloud makes the band a property of the surface alone.
+        """
+        if not hasattr(self, "_branch_scale"):
+            probe = qmc.Sobol(self.dim, scramble=True, seed=4242).random_base2(14)
+            self._branch_scale = float(np.ptp(self.branches(probe)))
+        return self._branch_scale
+
     def distance(self, x):
-        """Normalized branch-growth gap: small means near the transition."""
+        """Normalized branch-growth gap for *live* competition; inf elsewhere.
+
+        Small means the two branches are nearly tied. A near-tie only counts as
+        a transition while at least one branch is growing: where both sit near
+        zero -- ITG stable and KBM below onset -- nothing is competing. With a
+        gap test alone that dead zone was 93% of the ITG-KBM band (21% for
+        ITG-TEM) and dominated every ITG-KBM transition score.
+        """
         g = self.branches(x)
-        spread = float(np.ptp(g))
-        if spread <= 0:
+        scale = self.branch_scale()
+        if scale <= 0:
             return np.full(len(g), np.inf)
-        return np.abs(g[:, 0]-g[:, 1])/spread
+        gap = np.abs(g[:, 0]-g[:, 1])/scale
+        live = g.max(axis=1) > self.band_threshold*scale
+        return np.where(live, gap, np.inf)
 
     def peak_distance(self, x):
         """Rank distance into the high-response tail, in the same units the
