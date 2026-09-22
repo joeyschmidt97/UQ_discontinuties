@@ -269,6 +269,155 @@ def placement_sheet(rows, case, seed, path, noisy_peak=.20):
     plt.close(figure)
 
 
+def _replay_worker(row):
+    return row, _design_for(row)
+
+
+def prefetch_designs(rows, case, seed, workers=4):
+    """Replay every uncached design for one case and seed in parallel.
+
+    Each replay is a full trajectory; done serially at the full budget they take
+    minutes apiece. Results go through the same checked cache as design_for.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+    cache = (json.loads(REPLAY_CACHE.read_text(encoding="utf-8"))
+             if REPLAY_CACHE is not None and REPLAY_CACHE.exists() else {})
+    needed = [r for r in rows if r["n"] == r["budget"] and r["case"] == case
+              and r["seed"] == seed and r.get("x") is None
+              and "|".join(map(str, (r["case"], r["seed"], r["arm"], r["noise_peak"]))) not in cache]
+    if not needed:
+        return 0
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        for row, result in pool.map(_replay_worker, needed):
+            key = (row["case"], row["seed"], row["arm"], row["noise_peak"])
+            _REPLAYS[key] = result
+            _, x, observed, reps, _ = result
+            cache["|".join(map(str, key))] = dict(x=x.tolist(), y_observed=observed.tolist(),
+                                                  replicates=reps.tolist())
+    if REPLAY_CACHE is not None:
+        REPLAY_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+    return len(needed)
+
+
+def noise_ladder_sheets(rows, case, seed, order_path, error_path):
+    """Placement at every noise level, in the 2D benchmark's style.
+
+    Sheet 1: one row per noise level, grey isocontours of the true surface,
+    teal folds, points coloured by acquisition order.
+    Sheet 2: one row per noisy level, the filled isocontours showing that
+    level's one-sigma spread and each point coloured by the error of the value
+    it returned. Every row shares one colour scale, set by the largest level's
+    spread, so the growth of the noise from row to row is read off directly
+    rather than renormalized away.
+    """
+    final = {(r["arm"], r["noise_peak"]): r for r in rows
+             if r["n"] == r["budget"] and r["case"] == case and r["seed"] == seed}
+    peaks = sorted({k[1] for k in final})
+    noisy_peaks = [p for p in peaks if p > 0]
+    arms = [a for a in ARM_ORDER if any(k[0] == a for k in final)]
+    axis_values = np.linspace(0, 1, GRID)
+    gx, gy = np.meshgrid(axis_values, axis_values)
+    grid = np.column_stack([gx.ravel(), gy.ravel()])
+    clean = Noisy2DSurface(case, seed, peak=0.)
+    truth = clean.truth(grid).reshape(GRID, GRID)
+    region = clean.truth.region(grid).reshape(GRID, GRID)
+    low, high = float(truth.min()), float(truth.max())
+    scale = high-low
+
+    def design(arm, peak):
+        source = CLEAN_TWIN.get(arm, arm) if peak == 0 else arm
+        row = final.get((source, peak))
+        if row is None:
+            return None
+        _, x, observed, reps, _ = design_for(row)
+        return x, observed, reps, source != arm, row
+
+    def frame(axis):
+        axis.set(xlim=(0, 1), ylim=(0, 1), aspect="equal", xticks=[0, .5, 1], yticks=[0, .5, 1])
+        axis.tick_params(labelsize=7)
+
+    def annotate(axis, reps, x, row, twin, arm):
+        repeated = reps > 1
+        if repeated.any():
+            axis.scatter(x[repeated, 0], x[repeated, 1], s=36, facecolors="none",
+                         edgecolors="#00c853", linewidths=1.1)
+        note = f"RMS {row['placement_error']:.4f}"
+        if twin:
+            note += f"\n= {CLEAN_TWIN[arm]} at 0%"
+        axis.text(.03, .97, note, transform=axis.transAxes, va="top", fontsize=7.5,
+                  bbox=dict(facecolor="white", alpha=.85, edgecolor="none", pad=1.5))
+
+    figure, axes = plt.subplots(len(peaks), len(arms), figsize=(2.9*len(arms), 3.05*len(peaks)+.6),
+                                squeeze=False, layout="constrained")
+    image = None
+    for i, peak in enumerate(peaks):
+        for j, arm in enumerate(arms):
+            axis = axes[i, j]
+            frame(axis)
+            axis.contourf(gx, gy, truth, levels=np.linspace(low, high, 18), cmap="Greys", alpha=.30)
+            axis.contour(gx, gy, region, levels=np.arange(region.max())+.5, colors="#008a9a",
+                         linewidths=1)
+            found = design(arm, peak)
+            if found is None:
+                axis.text(.5, .5, "pending", transform=axis.transAxes, ha="center", color="#888888")
+            else:
+                x, observed, reps, twin, row = found
+                image = axis.scatter(x[:, 0], x[:, 1], c=np.linspace(0, 1, len(x)), cmap="plasma",
+                                     vmin=0, vmax=1, s=9, edgecolors="none")
+                annotate(axis, reps, x, row, twin, arm)
+            if i == 0:
+                axis.set_title(arm, fontsize=11, weight="bold")
+            if j == 0:
+                axis.set_ylabel(f"{peak:.0%} noise", fontsize=10)
+    if image is not None:
+        figure.colorbar(image, ax=axes.ravel().tolist(), shrink=.6, pad=.01,
+                        label="sample order: early (dark) to late (yellow)")
+    figure.suptitle(f"Placement at every noise level — {case}, seed {seed}, acquisition order.  "
+                    "Teal: mode folds.  RMS is the placement score.", fontsize=12)
+    figure.savefig(order_path, dpi=110)
+    plt.close(figure)
+
+    if not noisy_peaks:
+        return
+    fields = {p: (Noisy2DSurface(case, seed, peak=p).spread(grid)/scale).reshape(GRID, GRID)
+              for p in noisy_peaks}
+    top = max(float(f.max()) for f in fields.values())
+    norm = matplotlib.colors.PowerNorm(gamma=.6, vmin=0, vmax=top, clip=True)
+    figure, axes = plt.subplots(len(noisy_peaks), len(arms),
+                                figsize=(2.9*len(arms), 3.05*len(noisy_peaks)+.6),
+                                squeeze=False, layout="constrained")
+    image = None
+    for i, peak in enumerate(noisy_peaks):
+        truth_noisy = Noisy2DSurface(case, seed, peak=peak).truth
+        for j, arm in enumerate(arms):
+            axis = axes[i, j]
+            frame(axis)
+            image = axis.contourf(gx, gy, fields[peak], levels=np.linspace(0, top, 17),
+                                  cmap="YlOrRd", norm=norm, extend="max")
+            axis.contour(gx, gy, truth, levels=np.linspace(low, high, 12), colors="#555555",
+                         linewidths=.35, alpha=.6)
+            axis.contour(gx, gy, region, levels=np.arange(region.max())+.5, colors="#008a9a",
+                         linewidths=1)
+            found = design(arm, peak)
+            if found is None:
+                axis.text(.5, .5, "pending", transform=axis.transAxes, ha="center", color="#888888")
+            else:
+                x, observed, reps, twin, row = found
+                axis.scatter(x[:, 0], x[:, 1], c=np.abs(observed-truth_noisy(x))/scale,
+                             cmap="YlOrRd", norm=norm, s=13, edgecolors="black", linewidths=.35)
+                annotate(axis, reps, x, row, twin, arm)
+            if i == 0:
+                axis.set_title(arm, fontsize=11, weight="bold")
+            if j == 0:
+                axis.set_ylabel(f"{peak:.0%} noise", fontsize=10)
+    figure.colorbar(image, ax=axes.ravel().tolist(), shrink=.7, pad=.01,
+                    label="1σ spread (field), returned error (points)\n/ response range")
+    figure.suptitle(f"Placement at every noise level — {case}, seed {seed}, coloured by error "
+                    "(one shared scale across rows).  Teal: mode folds.", fontsize=12)
+    figure.savefig(error_path, dpi=110)
+    plt.close(figure)
+
+
 def map_sheet(rows, case, seed, path, mode="placement"):
     here = [r for r in rows if r["n"] == r["budget"] and r["case"] == case and r["seed"] == seed]
     available = sorted({r["noise_peak"] for r in here})
@@ -408,7 +557,11 @@ def main():
 
     convergence_sheet(rows, figures/"01-error-vs-budget.png")
     noise_field_sheet(args.map_case, args.map_seed, figures/"02-surface-and-noise-field.png")
+    prefetch_designs(rows, args.map_case, args.map_seed)
     placement_sheet(rows, args.map_case, args.map_seed, figures/"03-point-placement.png")
+    noise_ladder_sheets(rows, args.map_case, args.map_seed,
+                        figures/"06-placement-by-noise-order.png",
+                        figures/"07-placement-by-noise-error.png")
     replayed = map_sheet(rows, args.map_case, args.map_seed, figures/"04-placement-error-map.png")
     map_sheet(rows, args.map_case, args.map_seed, figures/"05-end-to-end-error-map.png",
               mode="end_to_end")
@@ -419,7 +572,11 @@ def main():
               ("04-placement-error-map.png",
                "Reconstruction error with sampled points (placement)"),
               ("05-end-to-end-error-map.png",
-               "Reconstruction error with sampled points (end-to-end)")]
+               "Reconstruction error with sampled points (end-to-end)"),
+              ("06-placement-by-noise-order.png",
+               "Placement at every noise level — acquisition order"),
+              ("07-placement-by-noise-error.png",
+               "Placement at every noise level — coloured by error, shared scale")]
     html(payload, rows, sheets, peaks, table, args.run/"index.html")
     print(f"wrote {(args.run/'index.html').resolve()} ({replayed or 0} map designs replayed)")
 
