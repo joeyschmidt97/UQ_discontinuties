@@ -43,7 +43,9 @@ SPINE_TOLERANCES = {
 }
 PORTED_TOLERANCES = {
     5: dict(nmae=.035, band_nmae=.035, p95_error=.13, vwfd_p95=.70),
-    6: dict(nmae=.080, band_nmae=.165, p95_error=.27, vwfd_p95=.75),
+    # band_nmae recalibrated 0.165 -> 0.18 after the live-competition mask
+    # (dae933b): the dead zone it removed was trivially easy and had diluted it.
+    6: dict(nmae=.080, band_nmae=.18, p95_error=.27, vwfd_p95=.75),
 }
 CALIBRATION_BUDGET = {5: 512, 6: 512}
 
