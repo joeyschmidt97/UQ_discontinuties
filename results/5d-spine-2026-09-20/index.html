@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8">
+<title>High-dimensional resolution benchmark</title>
+<style>
+ body{font:15px/1.5 system-ui,sans-serif;margin:2rem auto;max-width:1180px;color:#111}
+ table{border-collapse:collapse;margin:1rem 0;font-variant-numeric:tabular-nums}
+ th,td{border:1px solid #ccc;padding:.35rem .6rem;text-align:right}
+ th:first-child,td:first-child{text-align:left}
+ tr.lead{background:#eef7ee;font-weight:600}
+ .secondary{color:#777}
+ .warn{background:#fff4e5;padding:.6rem .9rem;border-left:3px solid #e8a33d}
+ img{max-width:100%;border:1px solid #ddd}
+ code{background:#f4f4f4;padding:.1rem .3rem}
+</style>
+<h1>High-dimensional resolution benchmark</h1>
+<p class='warn'>Partial run: this sheet reflects 95 of 144 trajectories.</p>
+<p>Commit <code>ddc080db0d</code>, budgets
+<code>{'5': 512, '6': 512, '8': 1024}</code>, 65536 reference points,
+seeds [0, 1, 2].</p>
+
+<h2>Leaderboard at the final budget</h2>
+<p>Ordered by mean holistic <em>H</em>, which above three dimensions is built from
+fit-free terms only. The two greyed columns are the ported four-term <em>H</em> and
+the thin-plate-spline RMS: both are shown for continuity with the 2D and 3D
+scores and neither decides the ranking, because that evaluator's error rises
+with budget on concentrated designs.</p>
+<table><tr><th>arm</th><th>n</th><th>mean H</th><th>max H</th><th>VWFD P95</th><th>nonlinear P95</th><th>fill P95</th><th>ported H</th><th>RBF RMS</th></tr><tr class='lead'><td>moe</td><td>7</td><td>0.762</td><td>0.951</td><td>0.4349</td><td>1.635</td><td>0.2878</td><td class='secondary'>1.088</td><td class='secondary'>0.0615</td></tr><tr><td>space-filling</td><td>9</td><td>0.773</td><td>0.962</td><td>0.4759</td><td>1.789</td><td>0.2694</td><td class='secondary'>0.810</td><td class='secondary'>0.0571</td></tr><tr><td>vurs</td><td>7</td><td>0.819</td><td>0.855</td><td>0.3801</td><td>1.226</td><td>0.3222</td><td class='secondary'>0.912</td><td class='secondary'>0.0527</td></tr><tr><td>gpr-u50-g50</td><td>8</td><td>0.911</td><td>0.979</td><td>0.3692</td><td>1.146</td><td>0.3642</td><td class='secondary'>1.717</td><td class='secondary'>0.0801</td></tr><tr><td>gpr-u70-g30</td><td>8</td><td>0.970</td><td>1.151</td><td>0.4846</td><td>2.044</td><td>0.3567</td><td class='secondary'>1.353</td><td class='secondary'>0.0667</td></tr><tr><td>vwrs</td><td>8</td><td>1.012</td><td>1.123</td><td>0.4117</td><td>1.515</td><td>0.3965</td><td class='secondary'>1.193</td><td class='secondary'>0.0621</td></tr><tr><td>gpr-u30-g70</td><td>8</td><td>1.022</td><td>1.120</td><td>0.3312</td><td>0.932</td><td>0.4088</td><td class='secondary'>3.183</td><td class='secondary'>0.1672</td></tr><tr><td>gpr-m05-var</td><td>8</td><td>1.058</td><td>1.293</td><td>0.5332</td><td>2.442</td><td>0.3522</td><td class='secondary'>0.835</td><td class='secondary'>0.0568</td></tr><tr><td>gpr-grad</td><td>8</td><td>1.083</td><td>1.219</td><td>0.3252</td><td>0.897</td><td>0.4331</td><td class='secondary'>3.787</td><td class='secondary'>0.1980</td></tr><tr><td>gpr-var</td><td>8</td><td>1.110</td><td>1.417</td><td>0.5423</td><td>2.556</td><td>0.3586</td><td class='secondary'>0.833</td><td class='secondary'>0.0578</td></tr><tr><td>gpr-m05-blend</td><td>8</td><td>1.327</td><td>1.612</td><td>0.4240</td><td>1.928</td><td>0.5191</td><td class='secondary'>5.318</td><td class='secondary'>0.2626</td></tr><tr><td>gpr-m05-grad</td><td>8</td><td>1.509</td><td>1.853</td><td>0.4702</td><td>2.470</td><td>0.5827</td><td class='secondary'>6.451</td><td class='secondary'>0.3213</td></tr></table>
+
+<h2>Which term binds</h2>
+<p>Spine <em>H</em> driver across completed trajectories:</p><ul><li><code>fill_p95</code> — 65</li><li><code>nonlinear_p95</code> — 29</li><li><code>vwfd_p95</code> — 1</li></ul>
+<p>Ported <em>H</em> driver, for comparison:</p><ul><li><code>nmae</code> — 49</li><li><code>band_nmae</code> — 23</li><li><code>p95_error</code> — 15</li><li><code>vwfd_p95</code> — 8</li></ul>
+
+<h2>Spine convergence, cases pooled</h2><img src='figures/01-spine-convergence.png'><h2>Holistic H per case</h2><img src='figures/02-holistic-per-case.png'><h2>VWFD P95 per case</h2><img src='figures/03-vwfd-per-case.png'><h2>Thin-plate-spline RMS per case (secondary, does not rank)</h2><img src='figures/04-rbf-secondary-per-case.png'>

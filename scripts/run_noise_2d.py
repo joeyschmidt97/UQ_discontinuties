@@ -30,6 +30,7 @@ import subprocess
 import time
 
 import numpy as np
+from threadpoolctl import threadpool_limits
 
 from benchmark2d.core import CASES, Surface, evaluation_set, reconstruct, rmse
 from benchmarknd.noisy import NoisyObservations
@@ -143,7 +144,11 @@ def execute(task):
         test = evaluation_set(surface.truth)
         test = (*test, truth_curvature(surface.truth, test[0]))
         obs = NoisyObservations(surface, budget, 2, seed, shared=CORNERS)
-        run_arm(arm, obs, seed)
+        # One BLAS thread per worker. Without this every worker spawns a thread
+        # per core and several pools on one machine oversubscribe it badly:
+        # measured at about one trajectory per hour instead of minutes.
+        with threadpool_limits(limits=1):
+            run_arm(arm, obs, seed)
         if obs.spent != budget:
             raise RuntimeError("strategy failed to spend the exact budget")
         design, noisy = obs.x, obs.y
@@ -154,6 +159,10 @@ def execute(task):
         rows[-1]["seconds"] = time.perf_counter()-started
         rows[-1]["unique_points"] = int(len(design))
         rows[-1]["max_replicates"] = int(obs.replicates.max())
+        # The final design, so placement can be drawn without replaying the run.
+        rows[-1]["x"] = design.tolist()
+        rows[-1]["y_observed"] = noisy.tolist()
+        rows[-1]["replicates"] = obs.replicates.tolist()
         return rows
     except Exception as exc:
         return [dict(**trial, n=0, status="failed", reason=f"{type(exc).__name__}: {exc}")]
@@ -170,9 +179,22 @@ def main():
     parser.add_argument("--budget", type=int, default=256)
     parser.add_argument("--checkpoints", type=int, default=8)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--resume", action="store_true",
+                        help="keep completed trajectories from a previous run")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+
+    result_path = args.output/"results.json"
+    previous, done = [], set()
+    if args.resume and result_path.exists():
+        previous = json.loads(result_path.read_text(encoding="utf-8"))["rows"]
+        done = {(r["case"], r["seed"], r["arm"], r["noise_peak"]) for r in previous
+                if r["status"] == "ok" and r["n"] == r["budget"]}
+        previous = [r for r in previous
+                    if (r["case"], r["seed"], r["arm"], r["noise_peak"]) in done]
+    elif result_path.exists():
+        parser.error("output exists; pass --resume or choose a new --output")
 
     tasks = []
     for peak, case, seed, arm in itertools.product(
@@ -181,7 +203,13 @@ def main():
         # twin, so running both would double the cost for identical rows.
         if peak == 0. and arm not in CLEAN_ONLY:
             continue
+        if (case, seed, arm, peak) in done:
+            continue
         tasks.append((case, seed, arm, peak, args.budget, args.checkpoints))
+
+    # Run the map case first, highest noise first, so the placement maps the
+    # report draws are available long before the full grid finishes.
+    tasks.sort(key=lambda t: (not (t[0] == args.cases[0] and t[1] == args.seeds[0]), -t[3]))
 
     root = pathlib.Path(__file__).resolve().parents[1]
     sources = sorted((root/"resolution").glob("*.py")) + [
@@ -198,13 +226,19 @@ def main():
                    fold_scale=FOLD_SCALE, noise_floor=DEFAULT_FLOOR, commit=commit,
                    source_hash=hashlib.sha256(
                        b"".join(p.read_bytes() for p in sources)).hexdigest(),
-                   python=platform.python_version(), rows=[])
-    result_path = args.output/"results.json"
-    print(f"{len(tasks)} trajectories on {args.workers} workers", flush=True)
+                   python=platform.python_version(), rows=list(previous))
+    print(f"{len(tasks)} trajectories on {args.workers} workers "
+          f"({len(done)} already complete)", flush=True)
+    # A dead worker breaks the whole pool; finished trajectories are already on
+    # disk, so report the loss and let --resume pick up the rest.
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         futures = [pool.submit(execute, task) for task in tasks]
-        for done, future in enumerate(as_completed(futures), 1):
-            rows = future.result()
+        for finished, future in enumerate(as_completed(futures), 1):
+            try:
+                rows = future.result()
+            except Exception as exc:
+                print(f"  worker lost: {type(exc).__name__}: {exc}", flush=True)
+                continue
             payload["rows"].extend(rows)
             result_path.write_text(json.dumps(payload, indent=1, allow_nan=False),
                                    encoding="utf-8")
@@ -212,7 +246,7 @@ def main():
             note = (f"placement {last['placement_error']:.4f} "
                     f"end_to_end {last['end_to_end_error']:.4f}"
                     if last["status"] == "ok" else last["reason"])
-            print(f"[{done}/{len(tasks)}] {last['case']} s{last['seed']} "
+            print(f"[{finished}/{len(tasks)}] {last['case']} s{last['seed']} "
                   f"{last['arm']} peak={last['noise_peak']:.2f} {note}", flush=True)
     failures = [r for r in payload["rows"] if r["status"] != "ok"]
     print(f"saved {result_path} ({len(payload['rows'])} rows, {len(failures)} failures)")
