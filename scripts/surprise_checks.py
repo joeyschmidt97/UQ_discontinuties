@@ -21,6 +21,13 @@ Verdicts as in `scripts.surprise_board`.
     python -m scripts.surprise_checks score --runs results/confirm-2026-10-05 results/board20-2026-10-07 \
         --output results/surprise-checks-2026-10-09
     python -m scripts.surprise_checks analyse --root results/surprise-checks-2026-10-09
+
+Descriptive, added after the registered analysis and not part of it: where
+along the budget vurs overtakes on the band and peaks, from the region
+errors the board rows already store at every checkpoint (N = 159 included).
+Paired differences per checkpoint, uncorrected.
+
+    python -m scripts.surprise_checks crossover --runs results/confirm-2026-10-05 results/board20-2026-10-07 --output results/surprise-checks-2026-10-09/crossover.json
 """
 import argparse
 import json
@@ -152,6 +159,36 @@ def analyse(args):
     print(f"saved {out}")
 
 
+CROSSOVER_KEYS = ("region_design_band_nrmse", "region_peak_nrmse", "region_quiet_nrmse", "ctr_macro_nrmse")
+CROSSOVER_ARMS = ("space-filling", "gpr-var", "moe", "vwrs")
+
+
+def crossover(args):
+    rng = np.random.default_rng(20261009)
+    report = dict(note="descriptive; not registered; p uncorrected", pools={})
+    for pool in POOLS:
+        rows = []
+        for (arm, seed), (_, _, _, by_n) in trajectories(args.runs, pool).items():
+            rows += [dict(arm=arm, seed=seed, n=n, **{k: r.get(k) for k in CROSSOVER_KEYS})
+                     for n, r in by_n.items()]
+        budgets = sorted({r["n"] for r in rows})
+        out = {}
+        for key in CROSSOVER_KEYS:
+            medians = {arm: {n: float(np.median([r[key] for r in rows if r["arm"] == arm and r["n"] == n]))
+                             for n in budgets} for arm in sorted({r["arm"] for r in rows})}
+            diffs = {other: {n: paired(rows, other, key, (n,), rng) for n in budgets} for other in CROSSOVER_ARMS}
+            out[key] = dict(medians=medians, paired=diffs)
+        report["pools"][pool] = dict(budgets=budgets, scores=out)
+        print(f"\n{pool}: vurs - comparator, mean [95% CI] p (negative = vurs better)")
+        for key in ("region_design_band_nrmse", "region_peak_nrmse"):
+            for other in CROSSOVER_ARMS:
+                cells = [f"N={n}: {t['mean']:+.3f} [{t['ci'][0]:+.3f},{t['ci'][1]:+.3f}] p{t['p']:.2g}"
+                         for n, t in out[key]["paired"][other].items() if n >= 61]
+                print(f"  {key[7:-6]:11s} {other:14s} " + " | ".join(cells))
+    args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(f"saved {args.output}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -161,8 +198,11 @@ def main():
     s.add_argument("--workers", type=int, default=14)
     a = sub.add_parser("analyse")
     a.add_argument("--root", type=pathlib.Path, required=True)
+    c = sub.add_parser("crossover")
+    c.add_argument("--runs", type=pathlib.Path, nargs="+", required=True)
+    c.add_argument("--output", type=pathlib.Path, required=True)
     args = parser.parse_args()
-    score(args) if args.command == "score" else analyse(args)
+    dict(score=score, analyse=analyse, crossover=crossover)[args.command](args)
 
 
 if __name__ == "__main__":
