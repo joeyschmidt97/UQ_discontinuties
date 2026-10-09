@@ -2,7 +2,7 @@
 import numpy as np
 
 from benchmarknd.pool import PoolOracle
-from benchmarknd.surprise import label_posterior, prequential_label_bits, surprise_scores
+from benchmarknd.surprise import gp_label_posterior, label_posterior, prequential_label_bits, surprise_scores
 from tests.test_pool import grid_oracle
 
 
@@ -37,3 +37,23 @@ def test_prequential_code_has_one_entry_per_paid_run_after_the_start():
     order = np.random.default_rng(1).permutation(len(oracle.pool))[:40]
     bits = prequential_label_bits(oracle, order, 7)
     assert len(bits) == 33 and min(bits) > 0
+
+
+def test_gp_label_posterior_is_shrunk_toward_the_prior_and_follows_the_data():
+    oracle = grid_oracle()
+    order = np.random.default_rng(2).permutation(len(oracle.pool))
+    paid, held = order[:60], order[60:]
+    post = gp_label_posterior(oracle.pool[paid], oracle.labels[paid], oracle.pool[held], 2)
+    assert np.allclose(post.sum(axis=1), 1) and post.min() > 0
+    assert np.mean(post.argmax(axis=1) == oracle.labels[held]) > .8
+    single = gp_label_posterior(oracle.pool[:5], np.zeros(5, int), oracle.pool[5:8], 3)
+    assert np.allclose(single[:, 0], (5+.5)/(5+1.5))
+
+
+def test_gpc_scores_and_region_points_are_reported():
+    oracle = grid_oracle()
+    order = np.random.default_rng(3).permutation(len(oracle.pool))[:50]
+    knn = surprise_scores(oracle, order, return_points=True)
+    gpc = surprise_scores(oracle, order, classifier="gpc")
+    assert len(knn["label_bits"]) == len(knn["held_index"]) == len(oracle.pool)-50
+    assert gpc["s_label_bits"] > 0

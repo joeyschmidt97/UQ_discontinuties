@@ -29,7 +29,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 from scipy.special import logsumexp
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
 
 ALPHA = .5          # Jeffreys prior on each mode
@@ -46,6 +46,33 @@ def label_posterior(paid_x, paid_labels, query, n_modes, k=None, alpha=ALPHA):
     for column in nearest.T:
         counts[np.arange(len(query)), paid_labels[column]] += 1
     return (counts+alpha)/(k+n_modes*alpha)
+
+
+def gp_label_posterior(paid_x, paid_labels, query, n_modes, alpha=ALPHA):
+    """Posterior predictive p(mode | x) of a GP classifier, shrunk toward the uniform prior.
+
+    One-vs-rest Laplace GP classifiers, Matern-5/2 with ARD length scales, the
+    scorer kernel of the growth-rate GPs. Modes absent from the paid runs get
+    probability only through the shrinkage, which adds alpha pseudo-counts per
+    mode against N paid runs: p = (N p_gpc + alpha) / (N + K alpha). It plays
+    the part of the Jeffreys prior in the Dirichlet-kNN posterior, and unlike a
+    k-neighbour vote the GP's confidence is not tied to the nearest-run
+    distance through a fixed stencil.
+    """
+    n = len(paid_x)
+    probs = np.zeros((len(query), n_modes))
+    seen = np.unique(paid_labels)
+    if len(seen) == 1:
+        probs[:, seen[0]] = 1.
+    else:
+        gpc = GaussianProcessClassifier(
+            kernel=ConstantKernel(1., (1e-3, 1e3))*Matern([.3]*paid_x.shape[1], (1e-2, 1e2), nu=2.5),
+            random_state=0, multi_class="one_vs_rest")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ConvergenceWarning)
+            gpc.fit(paid_x, paid_labels)
+        probs[:, gpc.classes_] = gpc.predict_proba(query)
+    return (n*probs+alpha)/(n+n_modes*alpha)
 
 
 def fit_scorer_gp(x, y):
@@ -70,12 +97,18 @@ def macro(values, labels, n_modes):
     return float(np.mean(live)), per_mode
 
 
-def surprise_scores(oracle, paid_index, held_index=None, k=None, alpha=ALPHA, std_floor=STD_FLOOR):
+def surprise_scores(oracle, paid_index, held_index=None, k=None, alpha=ALPHA, std_floor=STD_FLOOR,
+                    classifier="knn", return_points=False):
     """Label and growth-rate surprise of the held points after paying for `paid_index`.
 
     Held points default to every unpaid pool point, as in `pool.score_prefix`.
     Also returns the label model's own entropy (what it expects its surprise
     to be); held surprise above that entropy is overconfidence.
+
+    `classifier` picks the label posterior: "knn" (Dirichlet-kNN, the
+    registered default) or "gpc" (`gp_label_posterior`). With `return_points`
+    the per-point surprises and the held pool indices are added, for scoring
+    a region of the pool.
     """
     n_modes = len(oracle.label_names) or int(oracle.labels.max())+1
     paid = np.zeros(len(oracle.pool), bool)
@@ -85,7 +118,12 @@ def surprise_scores(oracle, paid_index, held_index=None, k=None, alpha=ALPHA, st
     scale = float(np.std(oracle.y))
     py, hx, hy, hl = oracle.y[paid]/scale, oracle.pool[held], oracle.y[held]/scale, oracle.labels[held]
 
-    post = label_posterior(px, pl, hx, n_modes, k, alpha)
+    if classifier == "knn":
+        post = label_posterior(px, pl, hx, n_modes, k, alpha)
+    elif classifier == "gpc":
+        post = gp_label_posterior(px, pl, hx, n_modes, alpha)
+    else:
+        raise ValueError(f"unknown classifier {classifier!r}")
     label_bits = -np.log(post[np.arange(len(hl)), hl])/LN2
     entropy_bits = -np.sum(post*np.log(post), axis=1)/LN2
 
@@ -108,7 +146,7 @@ def surprise_scores(oracle, paid_index, held_index=None, k=None, alpha=ALPHA, st
     label_macro, label_modes = macro(label_bits, hl, n_modes)
     gamma_macro, gamma_modes = macro(gamma_nats, hl, n_modes)
     names = oracle.label_names or [str(m) for m in range(n_modes)]
-    return dict(
+    out = dict(
         n=int(paid.sum()),
         s_label_bits=label_macro,
         s_label_mode_bits=dict(zip(names, label_modes)),
@@ -121,6 +159,9 @@ def surprise_scores(oracle, paid_index, held_index=None, k=None, alpha=ALPHA, st
         modes_with_own_gp=[names[m] for m in own_gp],
         prior_label_bits=float(np.log2(n_modes)),
     )
+    if return_points:
+        out.update(held_index=np.flatnonzero(held), label_bits=label_bits, gamma_nats=gamma_nats)
+    return out
 
 
 def prequential_label_bits(oracle, order, start, k=None, alpha=ALPHA):
